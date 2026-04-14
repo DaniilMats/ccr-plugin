@@ -433,8 +433,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--timeout",
         type=int,
-        default=300,
-        help="Timeout in seconds (default: 300).",
+        default=600,
+        help="Timeout in seconds (default: 600). Gemini and Claude with --effort max can take several minutes on non-trivial diffs.",
     )
     # ── New flags ──────────────────────────────────────────────────────────────
     parser.add_argument(

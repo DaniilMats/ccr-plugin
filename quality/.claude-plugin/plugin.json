@@ -1,7 +1,7 @@
 {
   "name": "quality",
   "description": "Adaptive multi-model code reviewer. Reviews GitLab MRs, local diffs, Go files, and Go packages; routes 4-10 reviewer passes across Logic/Security/Concurrency/Performance/Requirements personas, verifies consolidated findings, and posts approved inline comments for MR mode.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "author": {
     "name": "Daniil Matsiutsia"
   },

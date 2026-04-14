@@ -156,8 +156,8 @@ Do NOT silently swallow helper validation/runtime errors behind a generic fallba
 - `requirements_from_mr_description`
 - `user_requested_exhaustive`
 - `behavior_change_ambiguous`
-- `triggered_personas`
-- `highest_risk_personas`
+- `triggered_personas` — one or more of `security`, `concurrency`, `performance`, `requirements` ONLY. **NEVER include `"logic"`** — Logic is part of the mandatory baseline (Pass 1+2+3) and is not a triggerable specialty. Including `"logic"` here makes `ccr_routing.py` exit with a pydantic validation error.
+- `highest_risk_personas` — same constraint as `triggered_personas`: subset of the four specialty personas, never `"logic"`.
 - `critical_surfaces`
 
 #### Baseline
@@ -217,7 +217,9 @@ Build a shared repository/package context file at `/tmp/ccr_review_context.md` b
    - `Skip — continue without local context` → write the placeholder file and proceed
    - `Other` (free-text) → user pastes the absolute path. Validate it exists and contains `.git/`; if invalid, fall back to placeholder.
 
-5. **No local checkout available** (user picked Skip or all probes failed): write a short placeholder markdown file to `/tmp/ccr_review_context.md` listing the MR title, target branch, and a one-line "Local checkout unavailable — context limited." Then continue. Do NOT pretend the script ran.
+   **AskUserQuestion failure handling**: per Claude Code's subagent rules, `AskUserQuestion` only works when CCR runs in the foreground. If CCR is invoked as a **background subagent** (e.g. `Task(quality:ccr, run_in_background=true)`), the `AskUserQuestion` tool call fails immediately. CCR MUST detect this failure and fall through to step 5 (placeholder) without retrying or blocking. Do NOT loop on `AskUserQuestion`. Do NOT pretend the user answered "Skip" — log "AskUserQuestion unavailable in this execution mode" in the placeholder file so the failure is visible.
+
+5. **No local checkout available** (user picked Skip, all probes failed, or AskUserQuestion was unavailable): write a short placeholder markdown file to `/tmp/ccr_review_context.md` listing the MR title, target branch, and a one-line "Local checkout unavailable — context limited." Then continue. Do NOT pretend the script ran.
 
 Preferred command:
 
@@ -281,7 +283,7 @@ Requirements reviewers are prompt-based review tasks (NOT via CLI wrapper) and n
 
 Use `run_in_background: true` on all reviewer Task() calls. After spawning all planned reviewers, **STOP and WAIT** — you will be automatically notified when each completes.
 
-**Reviewer deadline: 10 minutes (600000ms).** All reviewer Task calls MUST use `timeout: 600000`. If a reviewer hasn't completed within 10 minutes, it times out — proceed with whatever results you have.
+**Reviewer deadline: 15 minutes (900000ms) at the Task level, 10 minutes inside `code_review.py`.** All reviewer Task calls MUST use `timeout: 900000`. The inner Python wrapper has a 600s default. The 5-minute gap gives the wrapper enough headroom to handle its own timeout, write a partial result, and exit cleanly before the Task deadline kills it. If a reviewer hasn't completed within 15 minutes, it times out — proceed with whatever results you have.
 
 **NEVER poll, resume, or check background agents:**
 - NEVER call Task with `resume:` on a running background agent
@@ -300,7 +302,7 @@ Use `run_in_background: true` on all reviewer Task() calls. After spawning all p
 
 #### Step 6a: Reviewer Task Templates
 
-Spawn every selected reviewer in a SINGLE response with `run_in_background: true` and `timeout: 600000`.
+Spawn every selected reviewer in a SINGLE response with `run_in_background: true` and `timeout: 900000`.
 
 **Triple-model strategy**: Pass 1 uses Gemini (`--provider gemini`) on the original diff, Pass 2 uses Codex (`--provider codex`) on the shuffled diff, and Pass 3 uses Claude Opus with `--effort max` (`--provider claude`) on the original diff. Three independent models maximise diversity — each catches different classes of issues. Pass 3 is expensive and typically only runs for Logic (always) and in the full matrix for other personas.
 
@@ -680,7 +682,7 @@ Each reviewer responds with this JSON on success, or a plaintext error prefix if
 
 1. NEVER post without user approval in MR mode. Local diff / file / package modes are report-only and must stop after the numbered findings list.
 2. ALWAYS run adaptive fanout planning before reviewer spawn. Prefer `${CLAUDE_PLUGIN_ROOT}/scripts/ccr_routing.py` as the source of truth; Logic Pass 1 + Pass 2 + Pass 3 are mandatory; total planned fanout must stay within 4-14 passes.
-3. ALL reviewer passes MUST be Task(general-purpose) calls (failure isolation). Reviewer timeout: 600000ms.
+3. ALL reviewer passes MUST be Task(general-purpose) calls (failure isolation). Reviewer timeout: 900000ms.
 4. Candidate findings MUST go through Step 7.5 verification before being shown. Raw unverified findings are allowed only if verification fully fails AND the user explicitly asks to see them.
 5. In MR mode, ALWAYS use DiffNote (inline), Python `json.dump()` for payloads, include `old_path` (= `new_path` for new files)
 6. `new_line` for new version lines; `old_line` for unchanged. New files: only `new_line`.
