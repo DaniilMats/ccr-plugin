@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRVerificationBatchV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "file", "diff_hunk", "file_context", "requirements", "candidates"],
+  "properties": {
+    "contract_version": { "const": "ccr.verification_batch.v1" },
+    "file": { "type": "string" },
+    "diff_hunk": { "type": "string" },
+    "file_context": { "type": "string" },
+    "requirements": { "type": "string" },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["candidate_id", "message"],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}

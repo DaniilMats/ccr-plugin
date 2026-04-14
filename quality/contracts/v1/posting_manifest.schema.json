@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRPostingManifestV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "project", "mr_iid", "approved_findings"],
+  "properties": {
+    "contract_version": { "const": "ccr.posting_manifest.v1" },
+    "project": { "type": "string" },
+    "mr_iid": { "type": ["string", "integer"] },
+    "approved_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["finding_number", "file", "line", "message"],
+        "properties": {
+          "finding_number": { "type": "integer", "minimum": 1 },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "message": { "type": "string" },
+          "fingerprint": { "type": "string" }
+        }
+      }
+    }
+  }
+}

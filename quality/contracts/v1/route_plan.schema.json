@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRRoutePlanV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "passes", "total_passes", "full_matrix", "pass_counts", "reasons", "summary"],
+  "properties": {
+    "contract_version": { "const": "ccr.route_plan.v1" },
+    "passes": { "type": "array", "items": { "type": "string" } },
+    "total_passes": { "type": "integer", "minimum": 0 },
+    "full_matrix": { "type": "boolean" },
+    "pass_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logic", "security", "concurrency", "performance", "requirements"],
+      "properties": {
+        "logic": { "type": "integer", "minimum": 0 },
+        "security": { "type": "integer", "minimum": 0 },
+        "concurrency": { "type": "integer", "minimum": 0 },
+        "performance": { "type": "integer", "minimum": 0 },
+        "requirements": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "summary": { "type": "string" }
+  }
+}

@@ -360,8 +360,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  %(prog)s --project-dir . --artifact-file /tmp/ccr_mr_diff.txt\n"
-            "  %(prog)s --project-dir ~/projects/service --artifact-file /tmp/review.txt --output-file /tmp/ccr_review_context.md\n"
+            "  %(prog)s --project-dir . --artifact-file /path/to/run/review_artifact.txt\n"
+            "  %(prog)s --project-dir ~/projects/service --artifact-file /path/to/run/review_artifact.txt --output-file /path/to/run/review_context.md\n"
         ),
     )
     parser.add_argument("--project-dir", required=True, help="Path to the local repository checkout.")

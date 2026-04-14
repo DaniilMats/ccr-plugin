@@ -68,13 +68,14 @@ Once installed, invoke the agent from Claude Code by asking any of:
 Or explicitly spawn the agent via `Task(quality:ccr, "...")` — the plugin registers it under the namespaced id `quality:ccr` (plugin name `quality` + agent file `ccr.md`).
 
 CCR walks the user through:
-1. Fetching the MR / preparing the local artifact
-2. Gathering requirements (optional)
-3. Adaptive routing (prints the review plan)
-4. Running reviewer passes in parallel
-5. Consolidating + verifying findings
-6. Printing a numbered report
-7. In MR mode: asking which findings to publish, then posting inline
+1. Initializing an isolated per-run workspace under `/tmp/ccr/<run_id>/`
+2. Fetching the MR / preparing the local artifact
+3. Gathering requirements (optional)
+4. Adaptive routing (prints the review plan)
+5. Running reviewer passes in parallel
+6. Consolidating + verifying findings
+7. Printing a numbered report
+8. In MR mode: asking which findings to publish, then posting inline
 
 ## Structure
 
@@ -92,8 +93,12 @@ ccr-plugin/
 │   ├── hooks/
 │   │   └── hooks.json              # SessionStart hook → install.sh --check-only
 │   ├── install.sh                  # dependency checker
+│   ├── contracts/
+│   │   └── v1/                     # versioned JSON contract schemas for CCR runtime artifacts
 │   └── scripts/
-│       ├── ccr_routing.py          # adaptive fanout planner (4-10 passes)
+│       ├── ccr_run_init.py         # isolated run workspace + manifest initializer
+│       ├── ccr_routing.py          # adaptive fanout planner (4-14 passes)
+│       ├── repomap.py              # lightweight focused repo map helper for review_context.py
 │       └── llm-proxy/
 │           ├── code_review.py          # main reviewer wrapper
 │           ├── code_review_verify.py   # verifier (Codex default, Gemini fallback)
@@ -127,8 +132,8 @@ All paths inside `quality/agents/ccr.md` use `${CLAUDE_PLUGIN_ROOT}` so the plug
 ## Critical Rules (from the agent)
 
 1. Never post comments without explicit user approval in MR mode.
-2. Always run adaptive fanout planning before reviewer spawn — Logic Pass 1 + Pass 2 are mandatory; total planned fanout must stay within 4-10 passes.
-3. All reviewer passes are `Task(general-purpose)` calls with 10-minute timeout for failure isolation.
+2. Always initialize an isolated run workspace first, then run adaptive fanout planning. Logic Pass 1 + Pass 2 + Pass 3 are mandatory; total planned fanout stays within 4-14 passes.
+3. All reviewer passes are `Task(general-purpose)` calls with a 15-minute Task deadline (`900000ms`) and a 10-minute inner wrapper timeout.
 4. Candidate findings must pass verification before being shown.
 5. Local diff / file / package modes are **report-only** — no posting target exists.
 
@@ -136,7 +141,7 @@ See `quality/agents/ccr.md` for the full workflow specification.
 
 ## Status
 
-Tested end-to-end with the minimal 4-pass fanout (Logic×2, Security×1, Performance×1) on a small Go file. All helper scripts resolve correctly from `${CLAUDE_PLUGIN_ROOT}`, routing picks the expected reviewer set, static analysis runs, reviewers produce JSON findings, verifier filters candidates, and the final numbered report is emitted as expected.
+Phase 0 is in progress: CCR now has an isolated run-workspace initializer (`ccr_run_init.py`), versioned contract schemas under `quality/contracts/v1/`, and aligned documentation for the current 4-14-pass / 15-minute-task model. The larger deterministic harness, posting helper, tests, and eval suites are still future work.
 
 ## License
 

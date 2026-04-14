@@ -111,6 +111,7 @@ def _dry_run_result(payload: dict, provider: str) -> dict:
             }
         )
     return {
+        "contract_version": "ccr.verification_result.v1",
         "verified_findings": verified_findings,
         "summary": "[dry-run] Verification skipped.",
         "raw_response": "[dry-run]",
@@ -124,7 +125,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python3 code_review_verify.py --input-file evals/ccr/verifier_cases/reject_false_positive_map_read.json
+    python3 code_review_verify.py --input-file /tmp/batch.json --provider codex
     python3 code_review_verify.py --input-file /tmp/batch.json --provider gemini --output-file /tmp/verify.json
     python3 code_review_verify.py --input-file /tmp/batch.json --dry-run
 """,
@@ -173,6 +174,7 @@ def main() -> None:
         error_msg = proxy_result.get("error") or "LLM provider returned non-zero exit code."
         print(f"ERROR: LLM provider '{args.provider}' failed: {error_msg}", file=sys.stderr)
         result = {
+            "contract_version": "ccr.verification_result.v1",
             "verified_findings": [],
             "summary": f"Verification failed: {error_msg}",
             "raw_response": raw_response,
@@ -183,6 +185,7 @@ def main() -> None:
 
     parsed = _parse_llm_response(raw_response)
     result = {
+        "contract_version": "ccr.verification_result.v1",
         "verified_findings": parsed.get("verified_findings", []),
         "summary": parsed.get("summary", "Verification completed."),
         "raw_response": raw_response,

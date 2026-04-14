@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRRouteInputV1",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "contract_version": { "const": "ccr.route_input.v1" },
+    "changed_files": { "type": "array", "items": { "type": "string" } },
+    "changed_file_count": { "type": ["integer", "null"], "minimum": 0 },
+    "changed_lines": { "type": "integer", "minimum": 0 },
+    "has_requirements": { "type": "boolean" },
+    "requirements_from_mr_description": { "type": "boolean" },
+    "user_requested_exhaustive": { "type": "boolean" },
+    "behavior_change_ambiguous": { "type": "boolean" },
+    "triggered_personas": {
+      "type": "array",
+      "items": { "enum": ["security", "concurrency", "performance", "requirements"] }
+    },
+    "highest_risk_personas": {
+      "type": "array",
+      "items": { "enum": ["security", "concurrency", "performance", "requirements"] }
+    },
+    "critical_surfaces": { "type": "array", "items": { "type": "string" } }
+  }
+}

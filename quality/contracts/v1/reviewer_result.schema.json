@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRReviewerResultV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "findings", "summary"],
+  "properties": {
+    "contract_version": { "const": "ccr.reviewer_result.v1" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "file", "line", "message"],
+        "properties": {
+          "severity": { "enum": ["bug", "warning", "info"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "summary": { "type": "string" },
+    "raw_response": { "type": "string" }
+  }
+}

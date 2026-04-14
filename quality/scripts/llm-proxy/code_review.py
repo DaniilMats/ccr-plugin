@@ -330,6 +330,7 @@ def _extract_review_output(proxy_result: dict) -> dict:
     # If dry-run or error, return a structured placeholder
     if proxy_result.get("exit_code", 0) != 0 or proxy_result.get("error"):
         return {
+            "contract_version": "ccr.reviewer_result.v1",
             "findings": [],
             "summary": "Review could not be completed: {}".format(
                 proxy_result.get("error", "unknown error")
@@ -348,10 +349,12 @@ def _extract_review_output(proxy_result: dict) -> dict:
             text = "\n".join(lines).strip()
 
         parsed = json.loads(text)
+        parsed["contract_version"] = "ccr.reviewer_result.v1"
         parsed["raw_response"] = raw
         return parsed
     except (json.JSONDecodeError, ValueError):
         return {
+            "contract_version": "ccr.reviewer_result.v1",
             "findings": [],
             "summary": "Review response was not valid JSON. See raw_response for details.",
             "raw_response": raw,

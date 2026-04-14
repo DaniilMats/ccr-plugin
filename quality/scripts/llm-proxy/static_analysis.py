@@ -25,6 +25,7 @@ from typing import Optional
 
 def empty_result() -> dict:
     return {
+        "contract_version": "ccr.static_analysis.v1",
         "go_vet": [],
         "staticcheck": [],
         "gosec": [],

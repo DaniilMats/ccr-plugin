@@ -5,8 +5,8 @@ This module is the source of truth for CCR reviewer selection so runtime behavio
 and eval behavior cannot drift apart.
 
 Examples:
-    python3 scripts/ccr_routing.py --input-file /tmp/ccr_route_input.json
-    python3 scripts/ccr_routing.py --input-file /tmp/ccr_route_input.json --output-file /tmp/ccr_route_plan.json
+    python3 scripts/ccr_routing.py --input-file /path/to/run/route_input.json
+    python3 scripts/ccr_routing.py --input-file /path/to/run/route_input.json --output-file /path/to/run/route_plan.json
 """
 from __future__ import annotations
 
@@ -109,6 +109,7 @@ class RoutingInput(BaseModel):
 
 
 class RoutingPlan(BaseModel):
+    contract_version: str = "ccr.route_plan.v1"
     passes: list[PassName]
     total_passes: int
     full_matrix: bool

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRVerificationResultV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "verified_findings", "summary"],
+  "properties": {
+    "contract_version": { "const": "ccr.verification_result.v1" },
+    "verified_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["candidate_id", "verdict", "file", "line", "revised_message", "evidence"],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "verdict": { "enum": ["confirmed", "uncertain", "rejected"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "revised_message": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "summary": { "type": "string" },
+    "raw_response": { "type": "string" }
+  }
+}

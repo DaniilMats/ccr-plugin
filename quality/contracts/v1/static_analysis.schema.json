@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRStaticAnalysisV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "go_vet", "staticcheck", "gosec", "tools_available", "categories", "error"],
+  "properties": {
+    "contract_version": { "const": "ccr.static_analysis.v1" },
+    "go_vet": { "type": "array" },
+    "staticcheck": { "type": "array" },
+    "gosec": { "type": "array" },
+    "tools_available": { "type": "object" },
+    "categories": { "type": "object" },
+    "error": { "type": ["string", "null"] }
+  }
+}

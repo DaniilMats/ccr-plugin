@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Initialize an isolated CCR run workspace.
+
+Creates a per-run directory, emits a run manifest with stable artifact paths,
+and prints the manifest as JSON so the agent can reuse the paths across the
+review workflow.
+
+Examples:
+    python3 ccr_run_init.py
+    python3 ccr_run_init.py --base-dir /tmp/ccr --output-file /tmp/ccr-last-run.json
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+RUN_MANIFEST_VERSION = "ccr.run_manifest.v1"
+DEFAULT_BASE_DIR = "/tmp/ccr"
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _build_run_id() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{timestamp}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+
+
+def _build_manifest(base_dir: Path, run_id: str) -> dict:
+    run_dir = base_dir / run_id
+    logs_dir = run_dir / "logs"
+    verify_batch_dir = run_dir / "verify_batches"
+    comments_dir = run_dir / "comment_payloads"
+
+    for path in (run_dir, logs_dir, verify_batch_dir, comments_dir):
+        path.mkdir(parents=True, exist_ok=True)
+
+    manifest = {
+        "contract_version": RUN_MANIFEST_VERSION,
+        "run_id": run_id,
+        "created_at": _utc_now(),
+        "base_dir": str(base_dir),
+        "run_dir": str(run_dir),
+        "manifest_file": str(run_dir / "run_manifest.json"),
+        "diff_file": str(run_dir / "review_artifact.txt"),
+        "requirements_file": str(run_dir / "requirements.txt"),
+        "route_input_file": str(run_dir / "route_input.json"),
+        "route_plan_file": str(run_dir / "route_plan.json"),
+        "route_helper_err_file": str(logs_dir / "route_helper.stderr.txt"),
+        "review_context_file": str(run_dir / "review_context.md"),
+        "static_analysis_file": str(run_dir / "static_analysis.json"),
+        "shuffled_diff_file": str(run_dir / "review_artifact.shuffled.txt"),
+        "requirements_prompt_pass1_file": str(run_dir / "requirements_pass1.prompt.txt"),
+        "requirements_prompt_pass2_file": str(run_dir / "requirements_pass2.prompt.txt"),
+        "verify_batch_dir": str(verify_batch_dir),
+        "comments_dir": str(comments_dir),
+        "report_file": str(run_dir / "report.md"),
+        "contract_versions": {
+            "route_input": "ccr.route_input.v1",
+            "route_plan": "ccr.route_plan.v1",
+            "static_analysis": "ccr.static_analysis.v1",
+            "reviewer_result": "ccr.reviewer_result.v1",
+            "verification_batch": "ccr.verification_batch.v1",
+            "verification_result": "ccr.verification_result.v1",
+            "posting_manifest": "ccr.posting_manifest.v1",
+        },
+    }
+    return manifest
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="ccr-run-init",
+        description="Create an isolated CCR run workspace and print its manifest as JSON.",
+    )
+    parser.add_argument(
+        "--base-dir",
+        default=DEFAULT_BASE_DIR,
+        help=f"Base directory for run workspaces (default: {DEFAULT_BASE_DIR}).",
+    )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Optional explicit run_id. Normally auto-generated.",
+    )
+    parser.add_argument(
+        "--output-file",
+        default=None,
+        help="Optional extra path to also write the manifest JSON.",
+    )
+    return parser
+
+
+def main() -> None:
+    args = _build_parser().parse_args()
+
+    base_dir = Path(args.base_dir).expanduser().resolve()
+    run_id = args.run_id or _build_run_id()
+    manifest = _build_manifest(base_dir, run_id)
+
+    manifest_path = Path(manifest["manifest_file"])
+    _write_json(manifest_path, manifest)
+
+    if args.output_file:
+        _write_json(Path(args.output_file).expanduser().resolve(), manifest)
+
+    print(json.dumps(manifest, indent=2))
+
+
+if __name__ == "__main__":
+    main()
