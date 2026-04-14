@@ -94,8 +94,8 @@ ccr-plugin/
 │   └── scripts/
 │       ├── ccr_routing.py               # adaptive fanout planner
 │       └── llm-proxy/
-│           ├── sisyphus_code_review.py         # main reviewer wrapper
-│           ├── sisyphus_code_review_verify.py  # verifier
+│           ├── code_review.py         # main reviewer wrapper
+│           ├── code_review_verify.py  # verifier
 │           ├── review_context.py               # repo context builder
 │           ├── static_analysis.py              # go vet / staticcheck integration
 │           ├── shuffle_diff.py                 # diff shuffler for Pass 2 diversity

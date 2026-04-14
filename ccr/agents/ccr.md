@@ -110,7 +110,7 @@ For non-MR reviews, prepare the review artifact first, then reuse the shared dow
 Use the wrapper to generate a reusable review artifact at `/tmp/ccr_mr_diff.txt`:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
   --scope <SCOPE> \
   --artifact-output /tmp/ccr_mr_diff.txt \
   --artifact-only
@@ -293,7 +293,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 
 1. **Logic & Correctness Pass 1 (Gemini)** — `Task(general-purpose)`:
    ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff.txt \
      --provider gemini \
      --persona logic \
@@ -304,7 +304,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 
 2. **Logic & Correctness Pass 2 (Codex)** — `Task(general-purpose)`:
    ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff_shuffled.txt \
      --provider codex \
      --persona logic \
@@ -315,7 +315,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 
 3. **Security Pass 1 (Gemini)** — `Task(general-purpose)`:
    ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff.txt \
      --provider gemini \
      --persona security \
@@ -326,7 +326,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 
 4. **Security Pass 2 (Codex)** — `Task(general-purpose)`:
    ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff_shuffled.txt \
      --provider codex \
      --persona security \
@@ -337,7 +337,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 
 5. **Concurrency Pass 1 (Gemini)** — `Task(general-purpose)`:
    ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff.txt \
      --provider gemini \
      --persona concurrency \
@@ -348,7 +348,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 
 6. **Concurrency Pass 2 (Codex)** — `Task(general-purpose)`:
    ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff_shuffled.txt \
      --provider codex \
      --persona concurrency \
@@ -359,7 +359,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 
 7. **Performance Pass 1 (Gemini)** — `Task(general-purpose)`:
    ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff.txt \
      --provider gemini \
      --persona performance \
@@ -370,7 +370,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 
 8. **Performance Pass 2 (Codex)** — `Task(general-purpose)`:
    ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py \
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff_shuffled.txt \
      --provider codex \
      --persona performance \
@@ -393,28 +393,28 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
 | Performance | Gemini | Codex | Different models spot different hotspots |
 | Requirements | General-purpose Task (prompt) | General-purpose Task (prompt) | Spec compliance — use when requirements/spec text exists or ambiguity is high |
 
-### sisyphus-code-review Wrapper
+### code_review Wrapper
 
 For **local code reviews** (branch, commit, uncommitted changes, a Go file, or a Go package), prefer the structured wrapper over raw CLI calls:
 
 ```bash
 # Review uncommitted changes
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py --scope uncommitted --provider codex
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py --scope uncommitted --provider codex
 
 # Review a specific commit
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py --scope commit:<SHA> --provider gemini
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py --scope commit:<SHA> --provider gemini
 
 # Review current branch vs main
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py --scope branch:main --output-file /tmp/review.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py --scope branch:main --output-file /tmp/review.json
 
 # Review an existing Go file
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py --scope file:internal/service/auth.go --provider codex
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py --scope file:internal/service/auth.go --provider codex
 
 # Review a Go package directory
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py --scope package:internal/service --provider codex
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py --scope package:internal/service --provider codex
 ```
 
-The `${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py` wrapper:
+The `${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py` wrapper:
 - Generates the review artifact automatically from `--scope`
 - Uses real git diffs for `uncommitted|commit:|branch:` scopes
 - Uses **synthetic full-file/full-package diffs** for `file:` and `package:` scopes so the same review prompts can be reused for audit mode
@@ -482,7 +482,7 @@ Step 7 produces **candidate findings**, not final comments. CCR MUST run a separ
 3. For each batch, spawn `Task(general-purpose)` with `timeout: 300000`; if 2+ batches exist, spawn them in parallel with `run_in_background: true`
 4. Use the standardized verifier wrapper inside each Task. **Codex is the default verifier provider.**
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review_verify.py \
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review_verify.py \
      --input-file /tmp/ccr_verify_batch_<N>.json \
      --provider codex
    ```
@@ -628,9 +628,9 @@ Each reviewer responds with this JSON on success, or a plaintext error prefix if
 7. Show ALL verified findings as a NUMBERED list — every finding gets a sequential number. NEVER skip numbering.
 8. NEVER attribute to specific models — no "Found by: Gemini". Consensus counts for ranking only.
 9. Reviewer or verifier fails → proceed with remaining. Verifier default is Codex; retry a failed verifier batch with Gemini once before dropping it. Never block entire review unless fewer than 2 reviewers succeed.
-10. All 8 code persona passes use `sisyphus_code_review.py` wrapper (Pass 1 = Gemini, Pass 2 = Codex) — CCR does NOT pre-render prompts for them.
+10. All 8 code persona passes use `code_review.py` wrapper (Pass 1 = Gemini, Pass 2 = Codex) — CCR does NOT pre-render prompts for them.
 11. Requirements reviewers are prompt-based general-purpose Tasks. They perform no file edits, so "no git changes" is expected.
-12. File/package review should go through `${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/sisyphus_code_review.py` using `file:` / `package:` scopes or raw local path normalization — do not improvise a different audit path when the wrapper can generate the artifact.
+12. File/package review should go through `${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py` using `file:` / `package:` scopes or raw local path normalization — do not improvise a different audit path when the wrapper can generate the artifact.
 13. When changing adaptive routing or verification behavior, keep `evals/ccr/` fixtures and `tests/test_ccr_evals.py` / `tests/test_ccr_routing.py` green — do not rely on intuition alone.
 
 ## Future Iterations

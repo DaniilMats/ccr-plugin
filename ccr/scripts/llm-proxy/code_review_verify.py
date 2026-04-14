@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""sisyphus-code-review-verify — Specialized wrapper over llm-proxy for CCR verification.
+"""code_review_verify — Specialized wrapper over llm-proxy for CCR verification.
 
 Bakes in the code review verification prompt and schema so CCR verifier tasks become
 more consistent and easier to evaluate.
 
 Usage:
-    python3 sisyphus_code_review_verify.py --input-file PATH [--provider codex|gemini]
-                                           [--output-file PATH] [--dry-run]
+    python3 code_review_verify.py --input-file PATH [--provider codex|gemini]
+                                  [--output-file PATH] [--dry-run]
 
 Default verifier provider: codex.
 """
@@ -119,14 +119,14 @@ def _dry_run_result(payload: dict, provider: str) -> dict:
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="sisyphus-code-review-verify",
+        prog="code-review-verify",
         description="Specialized code review finding verifier using llm-proxy.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python3 sisyphus_code_review_verify.py --input-file evals/ccr/verifier_cases/reject_false_positive_map_read.json
-    python3 sisyphus_code_review_verify.py --input-file /tmp/batch.json --provider gemini --output-file /tmp/verify.json
-    python3 sisyphus_code_review_verify.py --input-file /tmp/batch.json --dry-run
+    python3 code_review_verify.py --input-file evals/ccr/verifier_cases/reject_false_positive_map_read.json
+    python3 code_review_verify.py --input-file /tmp/batch.json --provider gemini --output-file /tmp/verify.json
+    python3 code_review_verify.py --input-file /tmp/batch.json --dry-run
 """,
     )
     parser.add_argument("--input-file", required=True, help="Path to the verifier batch JSON file.")

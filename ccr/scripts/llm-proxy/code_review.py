@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-sisyphus-code-review — Specialized Go code review wrapper over llm-proxy.
+code_review — Specialized Go code review wrapper over llm-proxy.
 
 Generates a git diff based on --scope, constructs a review prompt with baked-in
 Go code quality criteria, and invokes llm-proxy for schema-validated JSON output.
 
 Usage:
-    python3 sisyphus_code_review.py --scope uncommitted --provider codex
-    python3 sisyphus_code_review.py --scope commit:abc1234 --provider gemini
-    python3 sisyphus_code_review.py --scope branch:main --output-file /tmp/review.json
-    python3 sisyphus_code_review.py --scope file:internal/service/auth.go --provider codex
-    python3 sisyphus_code_review.py --scope package:internal/service --provider codex
-    python3 sisyphus_code_review.py --scope package:internal/service --artifact-output /tmp/review_artifact.txt --artifact-only
+    python3 code_review.py --scope uncommitted --provider codex
+    python3 code_review.py --scope commit:abc1234 --provider gemini
+    python3 code_review.py --scope branch:main --output-file /tmp/review.json
+    python3 code_review.py --scope file:internal/service/auth.go --provider codex
+    python3 code_review.py --scope package:internal/service --provider codex
+    python3 code_review.py --scope package:internal/service --artifact-output /tmp/review_artifact.txt --artifact-only
 """
 from __future__ import annotations
 
@@ -362,7 +362,7 @@ def _extract_review_output(proxy_result: dict) -> dict:
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="sisyphus-code-review",
+        prog="code-review",
         description=(
             "Specialized Go code review wrapper over llm-proxy. "
             "Generates a diff from --scope, constructs a Go-focused review prompt, "
