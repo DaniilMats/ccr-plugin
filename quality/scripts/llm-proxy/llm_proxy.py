@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-llm-proxy — Unified CLI interface for Codex and Gemini LLMs.
+llm-proxy — Unified CLI interface for Codex, Gemini, and Claude LLMs.
 
 Usage:
     python3 llm_proxy.py --provider codex --prompt "Review this code" [options]
@@ -26,11 +26,12 @@ from typing import Optional
 from adapters.base import ProxyResponse
 from adapters.codex import CodexAdapter
 from adapters.gemini import GeminiAdapter
+from adapters.claude import ClaudeAdapter
 from validator import validate_response
 
 # ── Constants ───────────────────────────────────────────────────────────────
 
-PROVIDERS = ("codex", "gemini")
+PROVIDERS = ("codex", "gemini", "claude")
 MAX_SCHEMA_RETRIES = 2  # Up to 3 total attempts (1 original + 2 retries)
 
 SCHEMA_RETRY_PROMPT_TEMPLATE = (
@@ -198,6 +199,8 @@ def _build_adapter(provider: str):
         return CodexAdapter()
     elif provider == "gemini":
         return GeminiAdapter()
+    elif provider == "claude":
+        return ClaudeAdapter()
     raise ValueError("Unknown provider: {}".format(provider))
 
 
@@ -218,7 +221,7 @@ def _maybe_write_output(data: dict, output_file: Optional[str]) -> None:
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-proxy",
-        description="Unified CLI interface for Codex and Gemini LLMs.",
+        description="Unified CLI interface for Codex, Gemini, and Claude LLMs.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

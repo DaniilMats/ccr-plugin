@@ -1,6 +1,6 @@
 # CCR — Claude Code Reviewer Plugin
 
-Adaptive multi-model code reviewer for [Claude Code](https://claude.com/claude-code). CCR orchestrates 4-10 reviewer passes across targeted personas (Logic, Security, Concurrency, Performance, Requirements), verifies consolidated findings with a second-stage verifier, and — in GitLab MR mode — posts approved inline comments only after user confirmation.
+Adaptive multi-model code reviewer for [Claude Code](https://claude.com/claude-code). CCR orchestrates 4-14 reviewer passes across targeted personas (Logic, Security, Concurrency, Performance, Requirements), verifies consolidated findings with a second-stage verifier, and — in GitLab MR mode — posts approved inline comments only after user confirmation.
 
 ## Features
 
@@ -9,8 +9,8 @@ Adaptive multi-model code reviewer for [Claude Code](https://claude.com/claude-c
   - Local diff scope → `uncommitted`, `commit:<SHA>`, `branch:<BASE>`
   - Single Go file → `file:<PATH>` or a raw path to a `.go` file
   - Go package directory → `package:<PATH>` or a raw path to a directory with `.go` files
-- **Adaptive fanout routing** (4-10 passes) driven by changed lines, triggered personas, and critical surfaces
-- **Dual-model diversity**: Pass 1 uses Gemini, Pass 2 uses Codex on a shuffled diff — different models catch different issues
+- **Adaptive fanout routing** (4-14 passes) driven by changed lines, triggered personas, and critical surfaces
+- **Triple-model diversity**: Pass 1 Gemini, Pass 2 Codex on a shuffled diff, Pass 3 Claude Opus with `--effort max`. Three independent models catch three different classes of issues. Logic always runs all three; specialty personas get Pass 3 only in the full matrix.
 - **Verification stage** (Codex with Gemini fallback) filters speculative findings before anything is shown to the user
 - **Post-once guarantee** in MR mode: inline `DiffNote` comments, never double-posted, only after explicit user approval
 
@@ -24,6 +24,7 @@ CCR delegates reviewing to external CLI tools. You need:
 | `glab` | GitLab MR fetch + posting | `brew install glab && glab auth login` |
 | `gemini` | Pass 1 reviewers | `npm install -g @google/gemini-cli && gemini auth` |
 | `codex` | Pass 2 reviewers + verifier (default) | `npm install -g @openai/codex && codex login` |
+| `claude` | Pass 3 reviewers (Opus, max effort) | [Install Claude Code](https://claude.com/claude-code) — you already have it to run this plugin |
 
 CCR still partially works without some of these — missing tools just cause their passes to be skipped gracefully.
 
@@ -103,8 +104,9 @@ ccr-plugin/
 │           ├── validator.py            # JSON schema validator
 │           ├── adapters/
 │           │   ├── base.py             # provider adapter interface
-│           │   ├── gemini.py           # Gemini CLI adapter
-│           │   └── codex.py            # Codex CLI adapter
+│           │   ├── gemini.py           # Gemini CLI adapter (Pass 1)
+│           │   ├── codex.py            # Codex CLI adapter (Pass 2)
+│           │   └── claude.py           # Claude CLI adapter (Pass 3 — Opus, max effort)
 │           ├── prompts/
 │           │   ├── code_review.txt         # base code review prompt
 │           │   ├── go_style_guide.txt      # embedded Go style guide

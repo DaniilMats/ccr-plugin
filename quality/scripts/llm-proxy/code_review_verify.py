@@ -26,7 +26,7 @@ from llm_proxy import run_proxy
 _HERE = os.path.dirname(os.path.abspath(__file__))
 PROMPT_TEMPLATE_PATH = os.path.join(_HERE, "prompts", "review_verify.txt")
 SCHEMA_PATH = os.path.join(_HERE, "schemas", "code_review_verification_response.schema.json")
-PROVIDERS = ("codex", "gemini")
+PROVIDERS = ("codex", "gemini", "claude")
 DEFAULT_PROVIDER = "codex"
 
 

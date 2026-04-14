@@ -161,9 +161,10 @@ Do NOT silently swallow helper validation/runtime errors behind a generic fallba
 - `critical_surfaces`
 
 #### Baseline
-- **Logic & Correctness Pass 1 + Pass 2 are ALWAYS required**
-- Planned fanout MUST be between **4 and 10 passes**
+- **Logic & Correctness Pass 1 + Pass 2 + Pass 3 are ALWAYS required** (Gemini, Codex, and Claude Opus triple-coverage for the core persona)
+- Planned fanout MUST be between **4 and 14 passes**
 - The goal is to save budget on narrow MRs without sacrificing coverage on risky ones
+- Pass 3 uses Claude Opus with `--effort max` — expensive but high-signal, reserved for Logic (always) and all specialty personas in the full matrix
 
 #### Persona Triggers
 - **Security**: auth/authz, permission checks, secrets/tokens, crypto, SQL, shell, filesystem, deserialization, request/response boundaries, external input validation
@@ -172,7 +173,7 @@ Do NOT silently swallow helper validation/runtime errors behind a generic fallba
 - **Requirements**: explicit user requirements were provided, user said "use MR description", or the MR description is detailed enough to validate spec compliance
 
 #### Routing Algorithm
-1. Start with mandatory baseline: **Logic Pass 1 + Logic Pass 2**
+1. Start with mandatory baseline: **Logic Pass 1 + Logic Pass 2 + Logic Pass 3** (Gemini, Codex, Claude Opus — three different models on the same diff)
 2. Add **Pass 1** for every triggered specialty persona (`security`, `concurrency`, `performance`, `requirements`)
 3. If fewer than **4 total passes** are planned, add generic coverage passes in this order until you reach 4:
    - `Security Pass 1`
@@ -188,12 +189,12 @@ Do NOT silently swallow helper validation/runtime errors behind a generic fallba
    - The user asks for an exhaustive review
 
 **Full matrix size depends on spec availability:**
-- If requirements/spec text exists → run the full **10-pass** matrix
-- If requirements/spec text does NOT exist → run the full **8-pass** code matrix (Logic/Security/Concurrency/Performance only)
+- If requirements/spec text exists → run the full **14-pass** matrix (12 code passes + Requirements x2)
+- If requirements/spec text does NOT exist → run the full **12-pass** code matrix (Logic/Security/Concurrency/Performance × Pass 1/2/3)
 
 #### Output Contract
 - When the helper succeeds, print its `summary` field verbatim before spawning reviewers
-- Example: `Review plan: medium-risk MR → Logic x2, Security x2, Requirements x1, Performance x1`
+- Example: `Review plan: medium-risk MR → Logic x3, Security x2, Requirements x1, Performance x1`
 
 ### Step 5.45: Build Repository / Package Context
 
@@ -287,7 +288,7 @@ Use `run_in_background: true` on all reviewer Task() calls. After spawning all p
 
 Spawn every selected reviewer in a SINGLE response with `run_in_background: true` and `timeout: 600000`.
 
-**Dual-model strategy**: Pass 1 uses Gemini (`--provider gemini`), Pass 2 uses Codex (`--provider codex`). Combined with shuffled diff order, this maximizes model diversity — different models catch different issues.
+**Triple-model strategy**: Pass 1 uses Gemini (`--provider gemini`) on the original diff, Pass 2 uses Codex (`--provider codex`) on the shuffled diff, and Pass 3 uses Claude Opus with `--effort max` (`--provider claude`) on the original diff. Three independent models maximise diversity — each catches different classes of issues. Pass 3 is expensive and typically only runs for Logic (always) and in the full matrix for other personas.
 
 Use the following templates and instantiate ONLY the passes selected in Step 5.4:
 
@@ -313,7 +314,18 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
    Return the full JSON output.
    ```
 
-3. **Security Pass 1 (Gemini)** — `Task(general-purpose)`:
+3. **Logic & Correctness Pass 3 (Claude Opus, max effort)** — `Task(general-purpose)`:
+   ```
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
+     --diff-file /tmp/ccr_mr_diff.txt \
+     --provider claude \
+     --persona logic \
+     --static-analysis /tmp/ccr_static_analysis.json \
+     --review-context-file /tmp/ccr_review_context.md
+   Return the full JSON output.
+   ```
+
+4. **Security Pass 1 (Gemini)** — `Task(general-purpose)`:
    ```
    Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff.txt \
@@ -324,7 +336,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
    Return the full JSON output.
    ```
 
-4. **Security Pass 2 (Codex)** — `Task(general-purpose)`:
+5. **Security Pass 2 (Codex)** — `Task(general-purpose)`:
    ```
    Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff_shuffled.txt \
@@ -335,7 +347,18 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
    Return the full JSON output.
    ```
 
-5. **Concurrency Pass 1 (Gemini)** — `Task(general-purpose)`:
+6. **Security Pass 3 (Claude Opus, max effort)** — `Task(general-purpose)`:
+   ```
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
+     --diff-file /tmp/ccr_mr_diff.txt \
+     --provider claude \
+     --persona security \
+     --static-analysis /tmp/ccr_static_analysis.json \
+     --review-context-file /tmp/ccr_review_context.md
+   Return the full JSON output.
+   ```
+
+7. **Concurrency Pass 1 (Gemini)** — `Task(general-purpose)`:
    ```
    Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff.txt \
@@ -346,7 +369,7 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
    Return the full JSON output.
    ```
 
-6. **Concurrency Pass 2 (Codex)** — `Task(general-purpose)`:
+8. **Concurrency Pass 2 (Codex)** — `Task(general-purpose)`:
    ```
    Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff_shuffled.txt \
@@ -357,7 +380,18 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
    Return the full JSON output.
    ```
 
-7. **Performance Pass 1 (Gemini)** — `Task(general-purpose)`:
+9. **Concurrency Pass 3 (Claude Opus, max effort)** — `Task(general-purpose)`:
+   ```
+   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
+     --diff-file /tmp/ccr_mr_diff.txt \
+     --provider claude \
+     --persona concurrency \
+     --static-analysis /tmp/ccr_static_analysis.json \
+     --review-context-file /tmp/ccr_review_context.md
+   Return the full JSON output.
+   ```
+
+10. **Performance Pass 1 (Gemini)** — `Task(general-purpose)`:
    ```
    Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
      --diff-file /tmp/ccr_mr_diff.txt \
@@ -368,30 +402,41 @@ Use the following templates and instantiate ONLY the passes selected in Step 5.4
    Return the full JSON output.
    ```
 
-8. **Performance Pass 2 (Codex)** — `Task(general-purpose)`:
-   ```
-   Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
-     --diff-file /tmp/ccr_mr_diff_shuffled.txt \
-     --provider codex \
-     --persona performance \
-     --static-analysis /tmp/ccr_static_analysis.json \
-     --review-context-file /tmp/ccr_review_context.md
-   Return the full JSON output.
-   ```
+11. **Performance Pass 2 (Codex)** — `Task(general-purpose)`:
+    ```
+    Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
+      --diff-file /tmp/ccr_mr_diff_shuffled.txt \
+      --provider codex \
+      --persona performance \
+      --static-analysis /tmp/ccr_static_analysis.json \
+      --review-context-file /tmp/ccr_review_context.md
+    Return the full JSON output.
+    ```
 
-9. **Requirements Pass 1** — `Task(general-purpose)`: paste full contents of `/tmp/ccr_prompt_requirements_pass1.txt` inline as the task prompt. Instantiate ONLY if selected in Step 5.4. (Prompt-based review task; no file edits are expected.)
+12. **Performance Pass 3 (Claude Opus, max effort)** — `Task(general-purpose)`:
+    ```
+    Run: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py \
+      --diff-file /tmp/ccr_mr_diff.txt \
+      --provider claude \
+      --persona performance \
+      --static-analysis /tmp/ccr_static_analysis.json \
+      --review-context-file /tmp/ccr_review_context.md
+    Return the full JSON output.
+    ```
 
-10. **Requirements Pass 2** — `Task(general-purpose)`: paste full contents of `/tmp/ccr_prompt_requirements_pass2.txt` inline. Instantiate ONLY if selected in Step 5.4. (Prompt-based review task; no file edits are expected.)
+13. **Requirements Pass 1** — `Task(general-purpose)`: paste full contents of `/tmp/ccr_prompt_requirements_pass1.txt` inline as the task prompt. Instantiate ONLY if selected in Step 5.4. (Prompt-based review task; no file edits are expected.)
+
+14. **Requirements Pass 2** — `Task(general-purpose)`: paste full contents of `/tmp/ccr_prompt_requirements_pass2.txt` inline. Instantiate ONLY if selected in Step 5.4. (Prompt-based review task; no file edits are expected.)
 
 ### Model Assignment Matrix
 
-| Persona | Pass 1 | Pass 2 | Rationale |
-|---------|--------|--------|-----------|
-| Logic & Correctness | Gemini (gemini-3.1-pro-preview) | Codex (gpt-5.4) | Hardest category — dual-model diversity catches more |
-| Security | Gemini | Codex | Pattern matching from two perspectives |
-| Concurrency | Gemini | Codex | Go-specific patterns, cross-validated |
-| Performance | Gemini | Codex | Different models spot different hotspots |
-| Requirements | General-purpose Task (prompt) | General-purpose Task (prompt) | Spec compliance — use when requirements/spec text exists or ambiguity is high |
+| Persona | Pass 1 | Pass 2 | Pass 3 | Rationale |
+|---------|--------|--------|--------|-----------|
+| Logic & Correctness | Gemini (gemini-3.1-pro-preview) | Codex (gpt-5.4) | Claude Opus (max effort) | Hardest category — triple-model diversity always runs |
+| Security | Gemini | Codex | Claude Opus (full matrix only) | Pattern matching from two perspectives, Opus for risky changes |
+| Concurrency | Gemini | Codex | Claude Opus (full matrix only) | Go-specific patterns, cross-validated |
+| Performance | Gemini | Codex | Claude Opus (full matrix only) | Different models spot different hotspots |
+| Requirements | General-purpose Task (prompt) | General-purpose Task (prompt) | — | Spec compliance — use when requirements/spec text exists or ambiguity is high |
 
 ### code_review Wrapper
 
@@ -620,7 +665,7 @@ Each reviewer responds with this JSON on success, or a plaintext error prefix if
 ## Critical Rules
 
 1. NEVER post without user approval in MR mode. Local diff / file / package modes are report-only and must stop after the numbered findings list.
-2. ALWAYS run adaptive fanout planning before reviewer spawn. Prefer `${CLAUDE_PLUGIN_ROOT}/scripts/ccr_routing.py` as the source of truth; Logic Pass 1 + Pass 2 are mandatory; total planned fanout must stay within 4-10 passes.
+2. ALWAYS run adaptive fanout planning before reviewer spawn. Prefer `${CLAUDE_PLUGIN_ROOT}/scripts/ccr_routing.py` as the source of truth; Logic Pass 1 + Pass 2 + Pass 3 are mandatory; total planned fanout must stay within 4-14 passes.
 3. ALL reviewer passes MUST be Task(general-purpose) calls (failure isolation). Reviewer timeout: 600000ms.
 4. Candidate findings MUST go through Step 7.5 verification before being shown. Raw unverified findings are allowed only if verification fully fails AND the user explicitly asks to see them.
 5. In MR mode, ALWAYS use DiffNote (inline), Python `json.dump()` for payloads, include `old_path` (= `new_path` for new files)
@@ -628,7 +673,7 @@ Each reviewer responds with this JSON on success, or a plaintext error prefix if
 7. Show ALL verified findings as a NUMBERED list — every finding gets a sequential number. NEVER skip numbering.
 8. NEVER attribute to specific models — no "Found by: Gemini". Consensus counts for ranking only.
 9. Reviewer or verifier fails → proceed with remaining. Verifier default is Codex; retry a failed verifier batch with Gemini once before dropping it. Never block entire review unless fewer than 2 reviewers succeed.
-10. All 8 code persona passes use `code_review.py` wrapper (Pass 1 = Gemini, Pass 2 = Codex) — CCR does NOT pre-render prompts for them.
+10. All 12 code persona passes use `code_review.py` wrapper (Pass 1 = Gemini, Pass 2 = Codex, Pass 3 = Claude Opus max effort) — CCR does NOT pre-render prompts for them.
 11. Requirements reviewers are prompt-based general-purpose Tasks. They perform no file edits, so "no git changes" is expected.
 12. File/package review should go through `${CLAUDE_PLUGIN_ROOT}/scripts/llm-proxy/code_review.py` using `file:` / `package:` scopes or raw local path normalization — do not improvise a different audit path when the wrapper can generate the artifact.
 13. When changing adaptive routing or verification behavior, keep `evals/ccr/` fixtures and `tests/test_ccr_evals.py` / `tests/test_ccr_routing.py` green — do not rely on intuition alone.

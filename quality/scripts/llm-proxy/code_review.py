@@ -36,7 +36,7 @@ DEFAULT_SCHEMA_PATH = os.path.join(_HERE, "schemas", "code_review_response.schem
 DEFAULT_PROMPT_PATH = os.path.join(_HERE, "prompts", "code_review.txt")
 DEFAULT_STYLE_GUIDE_PATH = os.path.join(_HERE, "prompts", "go_style_guide.txt")
 
-PROVIDERS = ("codex", "gemini")
+PROVIDERS = ("codex", "gemini", "claude")
 PERSONAS = ("logic", "security", "concurrency", "performance", "requirements")
 MAX_PACKAGE_FILES = 12
 MAX_PACKAGE_TOTAL_LINES = 3000

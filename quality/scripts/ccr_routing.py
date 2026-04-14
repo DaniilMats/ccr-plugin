@@ -24,12 +24,16 @@ Persona = Literal["security", "concurrency", "performance", "requirements"]
 PassName = Literal[
     "logic_p1",
     "logic_p2",
+    "logic_p3",
     "security_p1",
     "security_p2",
+    "security_p3",
     "concurrency_p1",
     "concurrency_p2",
+    "concurrency_p3",
     "performance_p1",
     "performance_p2",
+    "performance_p3",
     "requirements_p1",
     "requirements_p2",
 ]
@@ -62,12 +66,16 @@ DISPLAY_LABELS = {
 FULL_CODE_MATRIX: list[PassName] = [
     "logic_p1",
     "logic_p2",
+    "logic_p3",
     "security_p1",
     "security_p2",
+    "security_p3",
     "concurrency_p1",
     "concurrency_p2",
+    "concurrency_p3",
     "performance_p1",
     "performance_p2",
+    "performance_p3",
 ]
 FULL_REQUIREMENTS_MATRIX: list[PassName] = [
     "requirements_p1",
@@ -185,7 +193,9 @@ def plan_review_passes(request: RoutingInput) -> list[PassName]:
     if should_escalate_full_matrix(request):
         return _full_matrix(request)
 
-    passes: list[PassName] = ["logic_p1", "logic_p2"]
+    # Baseline: Logic x3 across Gemini + Codex + Claude Opus for max diversity
+    # on the core persona. Specialty personas only get Pass 3 via full matrix.
+    passes: list[PassName] = ["logic_p1", "logic_p2", "logic_p3"]
     triggered = set(request.triggered_personas)
 
     for persona in SPECIALTY_ORDER:
@@ -216,13 +226,13 @@ def build_routing_plan(request: RoutingInput) -> RoutingPlan:
     pass_counts = _count_passes(passes)
     full_matrix = should_escalate_full_matrix(request)
 
-    reasons = ["always include Logic x2 baseline"]
+    reasons = ["always include Logic x3 baseline (Gemini + Codex + Claude)"]
     if full_matrix:
         reasons.extend(explain_full_matrix_reasons(request))
         if request.has_spec_text():
-            reasons.append("requirements/spec text exists, so the full matrix includes Requirements x2")
+            reasons.append("requirements/spec text exists, so the full matrix includes Requirements x2 (14 total)")
         else:
-            reasons.append("no requirements/spec text, so the full matrix stays at the 8-pass code matrix")
+            reasons.append("no requirements/spec text, so the full matrix stays at the 12-pass code matrix")
     else:
         triggered = [persona for persona in SPECIALTY_ORDER if persona in set(request.triggered_personas)]
         if triggered:

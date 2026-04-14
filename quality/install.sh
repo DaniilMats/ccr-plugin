@@ -10,6 +10,7 @@
 #   - glab             (GitLab MR mode)
 #   - gemini           (Pass 1 reviewers)
 #   - codex            (Pass 2 reviewers + default verifier)
+#   - claude           (Pass 3 reviewers — Opus max effort; usually present since this is a Claude Code plugin)
 #
 # The hook NEVER fails Claude Code startup — it only warns. Install hints go to stderr.
 
@@ -36,10 +37,11 @@ check python3 "brew install python@3.12"
 check glab    "brew install glab && glab auth login"
 check gemini  "npm install -g @google/gemini-cli && gemini auth"
 check codex   "npm install -g @openai/codex && codex login"
+check claude  "https://claude.com/claude-code — required for Pass 3 Opus reviewers"
 
 if [[ ${#MISSING[@]} -eq 0 ]]; then
   if [[ $QUIET -eq 0 ]]; then
-    echo "[ccr] All required CLIs found: python3, glab, gemini, codex"
+    echo "[ccr] All required CLIs found: python3, glab, gemini, codex, claude"
   fi
   exit 0
 fi
