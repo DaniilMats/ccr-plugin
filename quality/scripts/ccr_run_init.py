@@ -51,6 +51,9 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
         "run_dir": str(run_dir),
         "logs_dir": str(logs_dir),
         "manifest_file": str(run_dir / "run_manifest.json"),
+        "status_file": str(run_dir / "status.json"),
+        "trace_file": str(run_dir / "trace.jsonl"),
+        "summary_file": str(run_dir / "run_summary.json"),
         "diff_file": str(run_dir / "review_artifact.txt"),
         "requirements_file": str(run_dir / "requirements.txt"),
         "mr_metadata_file": str(run_dir / "mr_metadata.json"),
@@ -73,6 +76,8 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
         "contract_versions": {
             "route_input": "ccr.route_input.v1",
             "route_plan": "ccr.route_plan.v1",
+            "run_status": "ccr.run_status.v1",
+            "run_summary": "ccr.run_summary.v1",
             "static_analysis": "ccr.static_analysis.v1",
             "reviewer_result": "ccr.reviewer_result.v1",
             "consolidated_candidate": "ccr.consolidated_candidate.v1",

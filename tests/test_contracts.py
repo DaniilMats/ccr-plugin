@@ -27,6 +27,8 @@ class TestContracts(unittest.TestCase):
             "run_manifest.schema.json",
             "route_input.schema.json",
             "route_plan.schema.json",
+            "run_status.schema.json",
+            "run_summary.schema.json",
             "static_analysis.schema.json",
             "reviewer_result.schema.json",
             "consolidated_candidate.schema.json",
@@ -47,6 +49,88 @@ class TestContracts(unittest.TestCase):
         self._assert_valid(route_input, "route_input.schema.json")
         plan = self.routing.build_routing_plan(self.routing.RoutingInput.model_validate(route_input)).model_dump()
         self._assert_valid(plan, "route_plan.schema.json")
+
+    def test_run_status_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.run_status.v1",
+            "run_id": "20260414T220000Z-1234-abcd1234",
+            "state": "running",
+            "started_at": "2026-04-14T22:00:00Z",
+            "finished_at": None,
+            "duration_ms": None,
+            "current_stage": {
+                "name": "reviewers",
+                "status": "running",
+                "message": "Running reviewer passes",
+                "started_at": "2026-04-14T22:01:00Z",
+                "ended_at": None,
+                "duration_ms": None
+            },
+            "stages": {
+                "routing": {
+                    "name": "routing",
+                    "status": "completed"
+                }
+            },
+            "reviewers": {
+                "planned": 12,
+                "workers": 12,
+                "timeout_sec": 600,
+                "completed": 4,
+                "succeeded": 4,
+                "failed": 0,
+                "estimated_max_duration_sec": 600,
+                "passes": {
+                    "logic_p1": {
+                        "status": "completed"
+                    }
+                }
+            },
+            "verification": {
+                "planned_batches": 0,
+                "workers": 0,
+                "timeout_sec": 300,
+                "completed_batches": 0,
+                "succeeded_batches": 0,
+                "failed_batches": 0,
+                "estimated_max_duration_sec": 0,
+                "batches": {}
+            },
+            "artifacts": {
+                "run_dir": "/tmp/ccr/run"
+            },
+            "summary": {},
+            "last_event": None,
+            "error": None
+        }
+        self._assert_valid(payload, "run_status.schema.json")
+
+    def test_run_summary_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.run_summary.v1",
+            "run_id": "20260414T220000Z-1234-abcd1234",
+            "mode": "local",
+            "target": "package:internal/auth",
+            "project_dir": "/tmp/repo",
+            "run_dir": "/tmp/ccr/run",
+            "manifest_file": "/tmp/ccr/run/run_manifest.json",
+            "status_file": "/tmp/ccr/run/status.json",
+            "trace_file": "/tmp/ccr/run/trace.jsonl",
+            "summary_file": "/tmp/ccr/run/run_summary.json",
+            "report_file": "/tmp/ccr/run/report.md",
+            "reviewers_file": "/tmp/ccr/run/reviewers.json",
+            "candidates_file": "/tmp/ccr/run/candidates.json",
+            "verified_findings_file": "/tmp/ccr/run/verified_findings.json",
+            "review_plan_summary": "Review plan: medium-risk MR → Logic x3, Security x2",
+            "reviewer_worker_count": 5,
+            "verifier_worker_count": 1,
+            "reviewer_timeout_sec": 600,
+            "verifier_timeout_sec": 300,
+            "duration_ms": 1234,
+            "verified_finding_count": 0,
+            "report_preview": ["Проверенных замечаний не найдено."]
+        }
+        self._assert_valid(payload, "run_summary.schema.json")
 
     def test_static_analysis_contract(self) -> None:
         payload = self.static_analysis.empty_result()

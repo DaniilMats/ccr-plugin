@@ -18,7 +18,8 @@ This plan is based on the current repository state in `~/ccr-plugin` and on prod
 As of 2026-04-14:
 - Phase 0 is complete: isolated run workspaces + versioned contracts
 - Phase 0.5 is complete: deterministic tests/fixtures + local smoke harness
-- Phase 1 now has an implemented deterministic harness entrypoint at `quality/scripts/ccr_run.py`
+- Phase 1 is complete: deterministic harness entrypoint at `quality/scripts/ccr_run.py`
+- Phase 1.1 is complete: live stderr progress, `status.json`, `trace.jsonl`, `run_summary.json`, and configurable parallelism/timeout budgeting for the harness
 
 ---
 

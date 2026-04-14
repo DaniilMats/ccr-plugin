@@ -57,13 +57,20 @@ class TestCCRRun(unittest.TestCase):
                 check=True,
             )
             summary = json.loads(result.stdout)
+            self.assertEqual(summary["contract_version"], "ccr.run_summary.v1")
             self.assertEqual(summary["mode"], "local")
             self.assertEqual(summary["verified_finding_count"], 0)
+            self.assertIn("Adaptive routing plan ready", result.stderr)
+            self.assertIn("Launching reviewer passes", result.stderr)
+            self.assertIn("CCR run completed", result.stderr)
 
             manifest = json.loads(Path(summary["manifest_file"]).read_text(encoding="utf-8"))
             self.assertTrue(Path(manifest["reviewers_file"]).is_file())
             self.assertTrue(Path(manifest["candidates_file"]).is_file())
             self.assertTrue(Path(manifest["verified_findings_file"]).is_file())
+            self.assertTrue(Path(manifest["status_file"]).is_file())
+            self.assertTrue(Path(manifest["trace_file"]).is_file())
+            self.assertTrue(Path(manifest["summary_file"]).is_file())
             self.assertEqual(
                 Path(manifest["report_file"]).read_text(encoding="utf-8").strip(),
                 "Проверенных замечаний не найдено.",
@@ -73,13 +80,27 @@ class TestCCRRun(unittest.TestCase):
             route_plan = json.loads(Path(manifest["route_plan_file"]).read_text(encoding="utf-8"))
             reviewers = json.loads(Path(manifest["reviewers_file"]).read_text(encoding="utf-8"))
             verified = json.loads(Path(manifest["verified_findings_file"]).read_text(encoding="utf-8"))
+            status = json.loads(Path(manifest["status_file"]).read_text(encoding="utf-8"))
+            written_summary = json.loads(Path(manifest["summary_file"]).read_text(encoding="utf-8"))
+            trace_lines = [json.loads(line) for line in Path(manifest["trace_file"]).read_text(encoding="utf-8").splitlines() if line.strip()]
+            trace_events = {entry["event"] for entry in trace_lines}
 
             self.assertEqual(route_input["triggered_personas"], ["security"])
             self.assertTrue(route_plan["full_matrix"])
             self.assertEqual(route_plan["total_passes"], 12)
             self.assertEqual(reviewers["summary"]["planned_passes"], 12)
+            self.assertEqual(reviewers["summary"]["worker_count"], 12)
             self.assertEqual(reviewers["summary"]["failed_passes"], 0)
             self.assertEqual(verified["summary"]["verified_count"], 0)
+            self.assertEqual(status["state"], "completed")
+            self.assertEqual(status["summary"]["verified_finding_count"], 0)
+            self.assertEqual(status["reviewers"]["planned"], 12)
+            self.assertEqual(status["reviewers"]["workers"], 12)
+            self.assertEqual(status["reviewers"]["completed"], 12)
+            self.assertEqual(status["verification"]["planned_batches"], 0)
+            self.assertEqual(written_summary["run_id"], summary["run_id"])
+            self.assertEqual(written_summary["duration_ms"], summary["duration_ms"])
+            self.assertTrue({"run_initialized", "route_plan_ready", "reviewers_started", "run_completed"}.issubset(trace_events))
 
 
 if __name__ == "__main__":

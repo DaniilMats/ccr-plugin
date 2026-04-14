@@ -54,6 +54,19 @@ Your job is to:
 4. in MR mode only: ask which verified findings to publish
 5. post only the approved findings
 
+## Harness Execution Rules
+
+When invoking `ccr_run.py` via `Bash`:
+- ALWAYS set a **long Bash timeout**: at least **2700000ms (45 minutes)**
+- NEVER rely on the default 10-minute Bash timeout for MR reviews
+- NEVER redirect away or suppress stderr — the harness streams high-signal progress there on purpose
+- Let the harness output speak for itself while it runs; it now emits stage progress and reviewer/verifier completion events
+
+The harness also writes live observability artifacts into the run directory:
+- `status.json` — latest machine-readable run status snapshot
+- `trace.jsonl` — append-only event trace
+- `run_summary.json` — final structured summary
+
 ## Workflow
 
 ### 1. Determine target mode
@@ -88,6 +101,8 @@ Use these rules:
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ccr_run.py <TARGET>
 ```
 
+Use a Bash timeout of **2700000ms (45m)** or more for this call.
+
 #### Use MR description as requirements
 
 ```bash
@@ -119,10 +134,13 @@ Pass these only when justified by the user's request/context:
 
 #### Harness output contract
 
-`ccr_run.py` prints a JSON summary to stdout and writes artifacts into an isolated run workspace under `/tmp/ccr/<run_id>/`.
+`ccr_run.py` prints a JSON summary to stdout, streams stage/reviewer/verifier progress to stderr, and writes artifacts into an isolated run workspace under `/tmp/ccr/<run_id>/`.
 
 Read these paths from the summary/manifest:
 - `manifest_file`
+- `status_file`
+- `trace_file`
+- `summary_file`
 - `report_file`
 - `reviewers_file`
 - `candidates_file`
@@ -133,8 +151,9 @@ Read these paths from the summary/manifest:
 
 After `ccr_run.py` completes:
 1. Read `report_file`
-2. Show the report contents to the user
-3. If the report is exactly:
+2. Before the full report, give a **short execution summary** using the harness output: run id, route summary, verified finding count, and report path
+3. Show the report contents to the user
+4. If the report is exactly:
 
 ```text
 Проверенных замечаний не найдено.
@@ -244,11 +263,13 @@ Use the verifier-adjusted file/line/message when posting or summarizing.
 ## Critical Rules
 
 1. Never bypass `ccr_run.py` for reviewer orchestration
-2. Never post comments without explicit user approval in MR mode
-3. Always show only **verified** findings as final findings
-4. Local diff / file / package modes are **report-only**
-5. AskUserQuestion is mandatory in MR mode before any posting fallback text prompt
-6. Requirements review now runs through the same deterministic wrapper path as other personas — do not revive the old prompt-only requirements path
+2. Never invoke `ccr_run.py` with a short/default Bash timeout — use at least 2700000ms
+3. Never suppress harness stderr progress output
+4. Never post comments without explicit user approval in MR mode
+5. Always show only **verified** findings as final findings
+6. Local diff / file / package modes are **report-only**
+7. AskUserQuestion is mandatory in MR mode before any posting fallback text prompt
+8. Requirements review now runs through the same deterministic wrapper path as other personas — do not revive the old prompt-only requirements path
 
 ## Comment Format
 

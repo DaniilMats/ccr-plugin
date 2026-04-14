@@ -10,6 +10,8 @@ Current schemas:
 - `run_manifest.schema.json`
 - `route_input.schema.json`
 - `route_plan.schema.json`
+- `run_status.schema.json`
+- `run_summary.schema.json`
 - `static_analysis.schema.json`
 - `reviewer_result.schema.json`
 - `consolidated_candidate.schema.json`

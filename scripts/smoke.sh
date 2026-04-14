@@ -53,4 +53,15 @@ python3 quality/scripts/ccr_run.py \
   --dry-run \
   --base-dir "$TMP_DIR/phase1" > "$TMP_DIR/ccr_run_summary.json"
 
+python3 - <<'PY' "$TMP_DIR/ccr_run_summary.json"
+import json, sys
+from pathlib import Path
+summary = json.loads(Path(sys.argv[1]).read_text())
+status = json.loads(Path(summary["status_file"]).read_text())
+assert summary["contract_version"] == "ccr.run_summary.v1"
+assert status["contract_version"] == "ccr.run_status.v1"
+assert status["state"] == "completed"
+assert Path(summary["trace_file"]).is_file()
+PY
+
 echo "[smoke] ok"

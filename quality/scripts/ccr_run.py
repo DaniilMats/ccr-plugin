@@ -28,6 +28,8 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -185,6 +187,561 @@ class CandidateRecord:
             "consensus": self.consensus,
             "evidence_sources": self.evidence_sources,
         }
+
+
+def _utc_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _duration_ms(started_at: float) -> int:
+    return int((time.monotonic() - started_at) * 1000)
+
+
+def _estimate_parallel_stage_duration(total_items: int, worker_count: int, timeout_sec: int) -> int:
+    if total_items <= 0 or worker_count <= 0:
+        return 0
+    waves = (total_items + worker_count - 1) // worker_count
+    return waves * max(timeout_sec, 0)
+
+
+def _format_seconds_short(total_seconds: int | None) -> str:
+    if total_seconds is None:
+        return "n/a"
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+    minutes, seconds = divmod(total_seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m" if seconds == 0 else f"{minutes}m{seconds}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h" if minutes == 0 and seconds == 0 else f"{hours}h{minutes}m{seconds}s"
+
+
+def _format_milliseconds_short(total_ms: int | None) -> str:
+    if total_ms is None:
+        return "n/a"
+    if total_ms < 1000:
+        return f"{total_ms}ms"
+    seconds = total_ms / 1000.0
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    return _format_seconds_short(int(round(seconds)))
+
+
+class RunObserver:
+    def __init__(self, manifest: dict[str, Any]) -> None:
+        self.run_id = manifest["run_id"]
+        self.trace_file = Path(manifest["trace_file"])
+        self.status_file = Path(manifest["status_file"])
+        self.summary_file = Path(manifest["summary_file"])
+        self._lock = threading.Lock()
+        self._run_started_monotonic = time.monotonic()
+        self._stage_started_monotonic: dict[str, float] = {}
+        self._status: dict[str, Any] = {
+            "contract_version": "ccr.run_status.v1",
+            "run_id": self.run_id,
+            "state": "running",
+            "started_at": _utc_now(),
+            "finished_at": None,
+            "duration_ms": None,
+            "current_stage": None,
+            "target": {},
+            "route_plan": {},
+            "stages": {},
+            "reviewers": {
+                "planned": 0,
+                "workers": 0,
+                "timeout_sec": None,
+                "completed": 0,
+                "succeeded": 0,
+                "failed": 0,
+                "estimated_max_duration_sec": None,
+                "passes": {},
+            },
+            "verification": {
+                "planned_batches": 0,
+                "workers": 0,
+                "timeout_sec": None,
+                "completed_batches": 0,
+                "succeeded_batches": 0,
+                "failed_batches": 0,
+                "estimated_max_duration_sec": None,
+                "batches": {},
+            },
+            "artifacts": {
+                "run_dir": manifest["run_dir"],
+                "manifest_file": manifest["manifest_file"],
+                "status_file": manifest["status_file"],
+                "trace_file": manifest["trace_file"],
+                "summary_file": manifest["summary_file"],
+                "report_file": manifest["report_file"],
+                "reviewers_file": manifest["reviewers_file"],
+                "candidates_file": manifest["candidates_file"],
+                "verified_findings_file": manifest["verified_findings_file"],
+            },
+            "summary": {},
+            "last_event": None,
+            "error": None,
+        }
+        self.trace_file.parent.mkdir(parents=True, exist_ok=True)
+        self.status_file.parent.mkdir(parents=True, exist_ok=True)
+        self.summary_file.parent.mkdir(parents=True, exist_ok=True)
+        self.trace_file.write_text("", encoding="utf-8")
+        self._write_status_locked()
+
+    def _write_status_locked(self) -> None:
+        self.status_file.write_text(json.dumps(self._status, indent=2) + "\n", encoding="utf-8")
+
+    def _format_brief_data(self, data: dict[str, Any]) -> str:
+        if not data:
+            return ""
+        preferred_keys = (
+            "mode",
+            "target",
+            "project_dir",
+            "summary",
+            "source",
+            "has_requirements",
+            "requirements_chars",
+            "changed_file_count",
+            "changed_lines",
+            "planned",
+            "workers",
+            "completed",
+            "succeeded",
+            "failed",
+            "finding_count",
+            "candidate_count",
+            "verified_count",
+            "batch_count",
+            "total_findings",
+            "go_vet",
+            "staticcheck",
+            "gosec",
+            "context_status",
+            "pass_name",
+            "provider",
+            "status",
+            "full_matrix",
+            "estimated_max_duration_sec",
+            "duration_ms",
+            "run_dir",
+            "report_file",
+        )
+        parts: list[str] = []
+        seen: set[str] = set()
+        for key in preferred_keys:
+            if key not in data:
+                continue
+            seen.add(key)
+            value = data[key]
+            if value in (None, "", [], {}):
+                continue
+            display_value = value
+            if key.endswith("_duration_sec") or key == "timeout_sec":
+                display_value = _format_seconds_short(int(value))
+            elif key == "duration_ms":
+                display_value = _format_milliseconds_short(int(value))
+            parts.append(f"{key}={display_value}")
+        return " | " + ", ".join(parts) if parts else ""
+
+    def event(self, event: str, message: str, *, stage: str | None = None, level: str = "info", **data: Any) -> None:
+        payload = {
+            "ts": _utc_now(),
+            "level": level,
+            "event": event,
+            "stage": stage,
+            "message": message,
+            "data": data,
+        }
+        with self._lock:
+            with self.trace_file.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            self._status["last_event"] = payload
+            self._write_status_locked()
+        stage_label = stage or "run"
+        print(f"[CCR][{payload['ts']}][{stage_label}] {message}{self._format_brief_data(data)}", file=sys.stderr, flush=True)
+
+    def set_target(self, *, mode: str, target: str, project_dir: str | None) -> None:
+        with self._lock:
+            self._status["target"] = {
+                "mode": mode,
+                "target": target,
+                "project_dir": project_dir,
+            }
+            self._write_status_locked()
+        self.event(
+            "target_ready",
+            "Resolved review target",
+            stage="bootstrap",
+            mode=mode,
+            target=target,
+            project_dir=project_dir,
+        )
+
+    def start_stage(self, stage: str, message: str, **data: Any) -> None:
+        started_at = _utc_now()
+        with self._lock:
+            self._stage_started_monotonic[stage] = time.monotonic()
+            stage_payload = self._status["stages"].get(stage, {})
+            stage_payload.update(
+                {
+                    "name": stage,
+                    "status": "running",
+                    "message": message,
+                    "started_at": started_at,
+                    "ended_at": None,
+                    "duration_ms": None,
+                }
+            )
+            if data:
+                stage_payload.update(data)
+            self._status["stages"][stage] = stage_payload
+            self._status["current_stage"] = {
+                "name": stage,
+                "status": "running",
+                "message": message,
+                "started_at": started_at,
+                "ended_at": None,
+                "duration_ms": None,
+            }
+            self._write_status_locked()
+        self.event("stage_started", message, stage=stage, **data)
+
+    def complete_stage(self, stage: str, message: str, **data: Any) -> None:
+        finished_at = _utc_now()
+        duration_ms = None
+        with self._lock:
+            started_mono = self._stage_started_monotonic.get(stage)
+            duration_ms = _duration_ms(started_mono) if started_mono is not None else None
+            stage_payload = self._status["stages"].get(stage, {"name": stage})
+            stage_payload.update(
+                {
+                    "status": "completed",
+                    "message": message,
+                    "ended_at": finished_at,
+                    "duration_ms": duration_ms,
+                }
+            )
+            if data:
+                stage_payload.update(data)
+            self._status["stages"][stage] = stage_payload
+            self._status["current_stage"] = {
+                "name": stage,
+                "status": "completed",
+                "message": message,
+                "started_at": stage_payload.get("started_at"),
+                "ended_at": finished_at,
+                "duration_ms": duration_ms,
+            }
+            self._write_status_locked()
+        payload = dict(data)
+        if duration_ms is not None:
+            payload.setdefault("duration_ms", duration_ms)
+        self.event("stage_completed", message, stage=stage, **payload)
+
+    def fail_stage(self, stage: str, message: str, **data: Any) -> None:
+        finished_at = _utc_now()
+        with self._lock:
+            started_mono = self._stage_started_monotonic.get(stage)
+            duration_ms = _duration_ms(started_mono) if started_mono is not None else None
+            stage_payload = self._status["stages"].get(stage, {"name": stage})
+            stage_payload.update(
+                {
+                    "status": "failed",
+                    "message": message,
+                    "ended_at": finished_at,
+                    "duration_ms": duration_ms,
+                }
+            )
+            if data:
+                stage_payload.update(data)
+            self._status["stages"][stage] = stage_payload
+            self._status["current_stage"] = {
+                "name": stage,
+                "status": "failed",
+                "message": message,
+                "started_at": stage_payload.get("started_at"),
+                "ended_at": finished_at,
+                "duration_ms": duration_ms,
+            }
+            self._write_status_locked()
+        payload = dict(data)
+        if duration_ms is not None:
+            payload.setdefault("duration_ms", duration_ms)
+        self.event("stage_failed", message, stage=stage, level="error", **payload)
+
+    def set_route_plan(self, route_input: dict[str, Any], route_plan: dict[str, Any]) -> None:
+        with self._lock:
+            self._status["route_plan"] = {
+                "summary": route_plan.get("summary"),
+                "total_passes": route_plan.get("total_passes"),
+                "full_matrix": route_plan.get("full_matrix"),
+                "pass_counts": route_plan.get("pass_counts"),
+                "triggered_personas": route_input.get("triggered_personas"),
+                "highest_risk_personas": route_input.get("highest_risk_personas"),
+                "critical_surfaces": route_input.get("critical_surfaces"),
+                "changed_file_count": route_input.get("changed_file_count"),
+                "changed_lines": route_input.get("changed_lines"),
+            }
+            self._write_status_locked()
+        self.event(
+            "route_plan_ready",
+            "Adaptive routing plan ready",
+            stage="routing",
+            summary=route_plan.get("summary"),
+            planned=route_plan.get("total_passes"),
+            triggered_personas=route_input.get("triggered_personas"),
+            critical_surfaces=route_input.get("critical_surfaces"),
+        )
+
+    def configure_reviewers(
+        self,
+        *,
+        passes: list[str],
+        workers: int,
+        timeout_sec: int,
+        estimated_max_duration_sec: int,
+    ) -> None:
+        with self._lock:
+            self._status["reviewers"] = {
+                "planned": len(passes),
+                "workers": workers,
+                "timeout_sec": timeout_sec,
+                "completed": 0,
+                "succeeded": 0,
+                "failed": 0,
+                "estimated_max_duration_sec": estimated_max_duration_sec,
+                "passes": {
+                    pass_name: {
+                        "status": "pending",
+                    }
+                    for pass_name in passes
+                },
+            }
+            self._write_status_locked()
+        self.event(
+            "reviewers_started",
+            "Launching reviewer passes",
+            stage="reviewers",
+            planned=len(passes),
+            workers=workers,
+            estimated_max_duration_sec=estimated_max_duration_sec,
+        )
+
+    def reviewer_started(self, spec: ReviewerPassSpec) -> None:
+        started_at = _utc_now()
+        with self._lock:
+            pass_status = self._status["reviewers"]["passes"].setdefault(spec.pass_name, {})
+            pass_status.update(
+                {
+                    "persona": spec.persona,
+                    "provider": spec.provider,
+                    "diff_kind": spec.diff_kind,
+                    "status": "running",
+                    "started_at": started_at,
+                }
+            )
+            self._write_status_locked()
+        self.event(
+            "reviewer_started",
+            f"Reviewer started: {spec.pass_name}",
+            stage="reviewers",
+            pass_name=spec.pass_name,
+            persona=spec.persona,
+            provider=spec.provider,
+            diff_kind=spec.diff_kind,
+        )
+
+    def reviewer_finished(self, result: dict[str, Any]) -> None:
+        pass_name = result["pass_name"]
+        with self._lock:
+            reviewers = self._status["reviewers"]
+            pass_status = reviewers["passes"].setdefault(pass_name, {})
+            pass_status.update(
+                {
+                    "persona": result["persona"],
+                    "provider": result["provider"],
+                    "diff_kind": result["diff_kind"],
+                    "status": result["status"],
+                    "exit_code": result["exit_code"],
+                    "finding_count": result["finding_count"],
+                    "summary": result["summary"],
+                    "timed_out": result.get("timed_out", False),
+                    "started_at": result.get("started_at"),
+                    "finished_at": result.get("finished_at"),
+                    "duration_ms": result.get("duration_ms"),
+                    "output_file": result.get("output_file"),
+                    "stderr_file": result.get("stderr_file"),
+                }
+            )
+            reviewers["completed"] += 1
+            if result["status"] == "succeeded":
+                reviewers["succeeded"] += 1
+            else:
+                reviewers["failed"] += 1
+            completed = reviewers["completed"]
+            planned = reviewers["planned"]
+            self._write_status_locked()
+        self.event(
+            "reviewer_completed",
+            f"Reviewer {completed}/{planned} finished: {pass_name}",
+            stage="reviewers",
+            completed=completed,
+            planned=planned,
+            pass_name=pass_name,
+            persona=result["persona"],
+            provider=result["provider"],
+            finding_count=result["finding_count"],
+            status=result["status"],
+            duration_ms=result.get("duration_ms"),
+        )
+
+    def configure_verification(
+        self,
+        *,
+        batch_ids: list[str],
+        workers: int,
+        timeout_sec: int,
+        estimated_max_duration_sec: int,
+    ) -> None:
+        with self._lock:
+            self._status["verification"] = {
+                "planned_batches": len(batch_ids),
+                "workers": workers,
+                "timeout_sec": timeout_sec,
+                "completed_batches": 0,
+                "succeeded_batches": 0,
+                "failed_batches": 0,
+                "estimated_max_duration_sec": estimated_max_duration_sec,
+                "batches": {
+                    batch_id: {
+                        "status": "pending",
+                    }
+                    for batch_id in batch_ids
+                },
+            }
+            self._write_status_locked()
+        self.event(
+            "verification_started",
+            "Launching verification batches",
+            stage="verification",
+            planned=len(batch_ids),
+            workers=workers,
+            estimated_max_duration_sec=estimated_max_duration_sec,
+        )
+
+    def verification_batch_started(self, batch_id: str, batch_file: str) -> None:
+        started_at = _utc_now()
+        with self._lock:
+            batch_status = self._status["verification"]["batches"].setdefault(batch_id, {})
+            batch_status.update(
+                {
+                    "status": "running",
+                    "batch_file": batch_file,
+                    "started_at": started_at,
+                }
+            )
+            self._write_status_locked()
+        self.event(
+            "verification_batch_started",
+            f"Verification batch started: {batch_id}",
+            stage="verification",
+            batch_id=batch_id,
+        )
+
+    def verification_batch_finished(self, result: dict[str, Any]) -> None:
+        batch_id = result["batch_id"]
+        with self._lock:
+            verification = self._status["verification"]
+            batch_status = verification["batches"].setdefault(batch_id, {})
+            payload = result.get("result") if isinstance(result.get("result"), dict) else {}
+            verified_findings = payload.get("verified_findings") if isinstance(payload.get("verified_findings"), list) else []
+            batch_status.update(
+                {
+                    "status": result["status"],
+                    "provider": result["provider"],
+                    "exit_code": result["exit_code"],
+                    "started_at": result.get("started_at"),
+                    "finished_at": result.get("finished_at"),
+                    "duration_ms": result.get("duration_ms"),
+                    "batch_file": result.get("batch_file"),
+                    "output_file": result.get("output_file"),
+                    "stderr_file": result.get("stderr_file"),
+                    "attempted_providers": result.get("attempted_providers"),
+                    "verified_findings": len(verified_findings),
+                }
+            )
+            verification["completed_batches"] += 1
+            if result["status"] == "succeeded":
+                verification["succeeded_batches"] += 1
+            else:
+                verification["failed_batches"] += 1
+            completed = verification["completed_batches"]
+            planned = verification["planned_batches"]
+            self._write_status_locked()
+        self.event(
+            "verification_batch_completed",
+            f"Verification {completed}/{planned} finished: {batch_id}",
+            stage="verification",
+            batch_id=batch_id,
+            completed=completed,
+            planned=planned,
+            provider=result["provider"],
+            status=result["status"],
+            duration_ms=result.get("duration_ms"),
+        )
+
+    def current_duration_ms(self) -> int:
+        return _duration_ms(self._run_started_monotonic)
+
+    def complete_run(self, summary: dict[str, Any]) -> None:
+        finished_at = _utc_now()
+        with self._lock:
+            self._status["state"] = "completed"
+            self._status["finished_at"] = finished_at
+            self._status["duration_ms"] = _duration_ms(self._run_started_monotonic)
+            summary["duration_ms"] = self._status["duration_ms"]
+            self._status["summary"] = summary
+            self._status["current_stage"] = {
+                "name": "completed",
+                "status": "completed",
+                "message": "CCR run completed",
+                "started_at": self._status["started_at"],
+                "ended_at": finished_at,
+                "duration_ms": self._status["duration_ms"],
+            }
+            self._write_status_locked()
+            self.summary_file.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        self.event(
+            "run_completed",
+            "CCR run completed",
+            stage="completed",
+            verified_count=summary.get("verified_finding_count"),
+            duration_ms=summary.get("duration_ms"),
+            report_file=summary.get("report_file"),
+        )
+
+    def fail_run(self, exc: Exception) -> None:
+        finished_at = _utc_now()
+        error_payload = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+        }
+        with self._lock:
+            self._status["state"] = "failed"
+            self._status["finished_at"] = finished_at
+            self._status["duration_ms"] = _duration_ms(self._run_started_monotonic)
+            self._status["error"] = error_payload
+            self._status["current_stage"] = {
+                "name": "failed",
+                "status": "failed",
+                "message": str(exc),
+                "started_at": self._status["started_at"],
+                "ended_at": finished_at,
+                "duration_ms": self._status["duration_ms"],
+            }
+            self._write_status_locked()
+        self.event("run_failed", f"CCR run failed: {exc}", stage="failed", level="error")
 
 
 _PASS_SPECS: dict[str, ReviewerPassSpec] = {
@@ -821,6 +1378,14 @@ def _build_shuffled_diff(manifest: dict[str, Any], artifact_text: str) -> None:
         raise RuntimeError(result.stderr.strip() or "shuffle_diff.py failed")
 
 
+def _resolve_worker_count(requested_workers: int, total_items: int, *, auto_cap: int) -> int:
+    if total_items <= 0:
+        return 0
+    if requested_workers > 0:
+        return max(1, min(total_items, requested_workers))
+    return max(1, min(total_items, auto_cap))
+
+
 def _build_reviewer_command(
     spec: ReviewerPassSpec,
     *,
@@ -874,6 +1439,9 @@ def _run_reviewer_pass(
         timeout_sec=timeout_sec,
     )
     stderr_path = Path(manifest["logs_dir"]) / f"reviewer.{spec.pass_name}.stderr.txt"
+    started_at = _utc_now()
+    started_mono = time.monotonic()
+    timed_out = False
 
     cwd = project_dir if project_dir and project_dir.is_dir() else Path.cwd()
     try:
@@ -883,6 +1451,10 @@ def _run_reviewer_pass(
     except subprocess.TimeoutExpired:
         stderr = f"timed out after {timeout_sec + 30} seconds\n"
         exit_code = -1
+        timed_out = True
+
+    finished_at = _utc_now()
+    duration_ms = _duration_ms(started_mono)
 
     _write_text(stderr_path, stderr)
     output_payload = _load_json_file(Path(output_path), default={})
@@ -900,6 +1472,10 @@ def _run_reviewer_pass(
         "diff_kind": spec.diff_kind,
         "status": status,
         "exit_code": exit_code,
+        "timed_out": timed_out,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "duration_ms": duration_ms,
         "output_file": output_path,
         "stderr_file": str(stderr_path),
         "finding_count": len(findings),
@@ -912,19 +1488,30 @@ def _run_reviewers(
     manifest: dict[str, Any],
     route_plan: dict[str, Any],
     *,
+    observer: RunObserver,
     project_dir: Path | None,
     requirements_available: bool,
     dry_run: bool,
     reviewer_timeout_sec: int,
-) -> list[dict[str, Any]]:
+    max_reviewer_workers: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     passes = route_plan.get("passes") or []
     specs = [_PASS_SPECS[pass_name] for pass_name in passes]
-    max_workers = max(1, min(len(specs), 8))
+    worker_count = _resolve_worker_count(max_reviewer_workers, len(specs), auto_cap=14)
+    estimated_max_duration_sec = _estimate_parallel_stage_duration(len(specs), worker_count, reviewer_timeout_sec)
+    observer.configure_reviewers(
+        passes=passes,
+        workers=worker_count,
+        timeout_sec=reviewer_timeout_sec,
+        estimated_max_duration_sec=estimated_max_duration_sec,
+    )
 
     results: list[dict[str, Any]] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-        future_map = {
-            pool.submit(
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, worker_count)) as pool:
+        future_map = {}
+        for spec in specs:
+            observer.reviewer_started(spec)
+            future = pool.submit(
                 _run_reviewer_pass,
                 spec,
                 manifest=manifest,
@@ -932,13 +1519,24 @@ def _run_reviewers(
                 requirements_available=requirements_available,
                 dry_run=dry_run,
                 timeout_sec=reviewer_timeout_sec,
-            ): spec.pass_name
-            for spec in specs
-        }
+            )
+            future_map[future] = spec.pass_name
         for future in concurrent.futures.as_completed(future_map):
-            results.append(future.result())
+            result = future.result()
+            results.append(result)
+            observer.reviewer_finished(result)
 
     results.sort(key=lambda item: passes.index(item["pass_name"]))
+    reviewers_summary = {
+        "planned_passes": len(passes),
+        "worker_count": worker_count,
+        "timeout_sec": reviewer_timeout_sec,
+        "estimated_max_duration_sec": estimated_max_duration_sec,
+        "completed_passes": len(results),
+        "succeeded_passes": sum(1 for item in results if item["status"] == "succeeded"),
+        "failed_passes": sum(1 for item in results if item["status"] != "succeeded"),
+        "total_findings": sum(item["finding_count"] for item in results),
+    }
     reviewers_payload = {
         "contract_version": "ccr.reviewers_manifest.v1",
         "passes": [
@@ -949,15 +1547,10 @@ def _run_reviewers(
             }
             for item in results
         ],
-        "summary": {
-            "planned_passes": len(passes),
-            "succeeded_passes": sum(1 for item in results if item["status"] == "succeeded"),
-            "failed_passes": sum(1 for item in results if item["status"] != "succeeded"),
-            "total_findings": sum(item["finding_count"] for item in results),
-        },
+        "summary": reviewers_summary,
     }
     _write_json(Path(manifest["reviewers_file"]), reviewers_payload)
-    return results
+    return results, reviewers_summary
 
 
 def _severity_rank(severity: str) -> int:
@@ -1023,7 +1616,7 @@ def _build_candidates(
     manifest: dict[str, Any],
     route_plan: dict[str, Any],
     static_analysis_payload: dict[str, Any],
-) -> list[CandidateRecord]:
+) -> tuple[list[CandidateRecord], dict[str, Any]]:
     pass_counts = route_plan.get("pass_counts") if isinstance(route_plan.get("pass_counts"), dict) else {}
     flattened: list[dict[str, Any]] = []
     for review in reviewer_results:
@@ -1081,16 +1674,17 @@ def _build_candidates(
             candidates.append(candidate)
             next_id += 1
 
+    candidates_summary = {
+        "candidate_count": len(candidates),
+        "source_finding_count": len(flattened),
+    }
     candidates_payload = {
         "contract_version": "ccr.candidates_manifest.v1",
         "candidates": [candidate.to_contract_dict() for candidate in candidates],
-        "summary": {
-            "candidate_count": len(candidates),
-            "source_finding_count": len(flattened),
-        },
+        "summary": candidates_summary,
     }
     _write_json(Path(manifest["candidates_file"]), candidates_payload)
-    return candidates
+    return candidates, candidates_summary
 
 
 def _extract_diff_blocks(diff_text: str) -> dict[str, str]:
@@ -1190,13 +1784,18 @@ def _run_single_verification_batch(
     stderr_path = Path(manifest["logs_dir"]) / f"verifier.{batch_path.stem}.stderr.txt"
     providers = ["codex"] if dry_run else ["codex", "gemini"]
     used_provider = providers[0]
+    attempted_providers: list[str] = []
     last_exit_code = 1
     last_stderr = ""
+    started_at = _utc_now()
+    started_mono = time.monotonic()
+    timed_out = False
 
     cwd = project_dir if project_dir and project_dir.is_dir() else Path.cwd()
 
     for provider in providers:
         used_provider = provider
+        attempted_providers.append(provider)
         cmd = [
             sys.executable,
             str(_CODE_REVIEW_VERIFY_SCRIPT),
@@ -1216,8 +1815,12 @@ def _run_single_verification_batch(
         except subprocess.TimeoutExpired:
             last_exit_code = -1
             last_stderr = f"timed out after {verifier_timeout_sec + 30} seconds\n"
+            timed_out = True
         if output_path.is_file() and last_exit_code == 0:
             break
+
+    finished_at = _utc_now()
+    duration_ms = _duration_ms(started_mono)
 
     _write_text(stderr_path, last_stderr)
     payload = _load_json_file(output_path, default={})
@@ -1230,8 +1833,13 @@ def _run_single_verification_batch(
         "output_file": str(output_path),
         "stderr_file": str(stderr_path),
         "provider": used_provider,
+        "attempted_providers": attempted_providers,
         "exit_code": last_exit_code,
         "status": "succeeded" if last_exit_code == 0 else "failed",
+        "timed_out": timed_out,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "duration_ms": duration_ms,
         "result": payload,
     }
 
@@ -1311,26 +1919,33 @@ def _merge_verified_findings(
 def _run_verification(
     manifest: dict[str, Any],
     *,
+    observer: RunObserver,
     candidates: list[CandidateRecord],
     artifact_text: str,
     project_dir: Path | None,
     requirements_text: str,
     dry_run: bool,
     verifier_timeout_sec: int,
-) -> list[dict[str, Any]]:
+    max_verifier_workers: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if not candidates:
+        summary = {
+            "verified_count": 0,
+            "batch_count": 0,
+            "successful_batches": 0,
+            "failed_batches": 0,
+            "worker_count": 0,
+            "timeout_sec": verifier_timeout_sec,
+            "estimated_max_duration_sec": 0,
+        }
         payload = {
             "contract_version": "ccr.verified_findings.v1",
             "verified_findings": [],
             "verification_batches": [],
-            "summary": {
-                "verified_count": 0,
-                "batch_count": 0,
-                "successful_batches": 0,
-            },
+            "summary": summary,
         }
         _write_json(Path(manifest["verified_findings_file"]), payload)
-        return []
+        return [], summary
 
     batches = _write_verification_batches(
         manifest,
@@ -1340,25 +1955,50 @@ def _run_verification(
         requirements_text=requirements_text,
     )
 
-    max_workers = max(1, min(len(batches), 4))
+    worker_count = _resolve_worker_count(max_verifier_workers, len(batches), auto_cap=8)
+    estimated_max_duration_sec = _estimate_parallel_stage_duration(len(batches), worker_count, verifier_timeout_sec)
+    observer.configure_verification(
+        batch_ids=[batch["batch_id"] for batch in batches],
+        workers=worker_count,
+        timeout_sec=verifier_timeout_sec,
+        estimated_max_duration_sec=estimated_max_duration_sec,
+    )
+
     results: list[dict[str, Any]] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-        future_map = {
-            pool.submit(
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, worker_count)) as pool:
+        future_map = {}
+        for batch in batches:
+            observer.verification_batch_started(batch["batch_id"], batch["batch_file"])
+            future = pool.submit(
                 _run_single_verification_batch,
                 batch,
                 manifest=manifest,
                 project_dir=project_dir,
                 dry_run=dry_run,
                 verifier_timeout_sec=verifier_timeout_sec,
-            ): batch["batch_id"]
-            for batch in batches
-        }
+            )
+            future_map[future] = batch["batch_id"]
         for future in concurrent.futures.as_completed(future_map):
-            results.append(future.result())
+            result = future.result()
+            results.append(result)
+            observer.verification_batch_finished(result)
 
     results.sort(key=lambda item: item["batch_id"])
-    return _merge_verified_findings(manifest, candidates=candidates, verification_results=results)
+    verified_findings = _merge_verified_findings(manifest, candidates=candidates, verification_results=results)
+    verification_summary = {
+        "verified_count": len(verified_findings),
+        "batch_count": len(results),
+        "successful_batches": sum(1 for batch in results if batch["status"] == "succeeded"),
+        "failed_batches": sum(1 for batch in results if batch["status"] != "succeeded"),
+        "worker_count": worker_count,
+        "timeout_sec": verifier_timeout_sec,
+        "estimated_max_duration_sec": estimated_max_duration_sec,
+    }
+    verified_payload = _load_json_file(Path(manifest["verified_findings_file"]), default={})
+    if isinstance(verified_payload, dict):
+        verified_payload["summary"] = verification_summary
+        _write_json(Path(manifest["verified_findings_file"]), verified_payload)
+    return verified_findings, verification_summary
 
 
 def _format_report(verified_findings: list[dict[str, Any]]) -> str:
@@ -1462,10 +2102,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Per-reviewer timeout in seconds (default: 600).",
     )
     parser.add_argument(
+        "--max-reviewer-workers",
+        type=int,
+        default=0,
+        help="Maximum parallel reviewer workers. 0 means auto (default: run all planned passes in parallel).",
+    )
+    parser.add_argument(
         "--verifier-timeout",
         type=int,
         default=300,
         help="Per-verifier timeout in seconds (default: 300).",
+    )
+    parser.add_argument(
+        "--max-verifier-workers",
+        type=int,
+        default=0,
+        help="Maximum parallel verifier workers. 0 means auto (default: up to 8 batches in parallel).",
     )
     parser.add_argument(
         "--dry-run",
@@ -1505,89 +2157,257 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
         args.run_id,
         args.manifest_output,
     )
-
-    mr_metadata = _load_json_file(Path(manifest["mr_metadata_file"]), default={})
-    mr_metadata = _materialize_review_artifact(
-        manifest,
-        target,
-        project_dir=project_dir,
-        mr_metadata=mr_metadata,
+    observer = RunObserver(manifest)
+    observer.event(
+        "run_initialized",
+        "Initialized isolated CCR run workspace",
+        stage="bootstrap",
+        run_dir=manifest["run_dir"],
+        status_file=manifest["status_file"],
+        trace_file=manifest["trace_file"],
+        summary_file=manifest["summary_file"],
+    )
+    observer.set_target(
+        mode=target.mode,
+        target=target.display_target,
+        project_dir=str(project_dir) if project_dir else None,
     )
 
-    requirements_text = _materialize_requirements(
-        manifest,
-        requirements_text=args.requirements_text,
-        requirements_file=args.requirements_file,
-        requirements_stdin=args.requirements_stdin,
-        use_mr_description=args.use_mr_description_as_requirements,
-        mr_metadata=mr_metadata,
-    )
+    current_stage: str | None = None
+    try:
+        mr_metadata = _load_json_file(Path(manifest["mr_metadata_file"]), default={})
 
-    artifact_text = _read_text(Path(manifest["diff_file"]))
-    if target.mode != "mr" and not Path(manifest["mr_metadata_file"]).is_file():
-        _write_json(Path(manifest["mr_metadata_file"]), mr_metadata or {})
+        current_stage = "artifact_preparation"
+        observer.start_stage(
+            current_stage,
+            "Preparing review artifact",
+            mode=target.mode,
+            target=target.display_target,
+        )
+        mr_metadata = _materialize_review_artifact(
+            manifest,
+            target,
+            project_dir=project_dir,
+            mr_metadata=mr_metadata,
+        )
+        artifact_text = _read_text(Path(manifest["diff_file"]))
+        changed_files = _extract_changed_files(artifact_text)
+        changed_lines = _count_changed_lines(artifact_text)
+        if target.mode != "mr" and not Path(manifest["mr_metadata_file"]).is_file():
+            _write_json(Path(manifest["mr_metadata_file"]), mr_metadata or {})
+        observer.complete_stage(
+            current_stage,
+            "Review artifact ready",
+            changed_file_count=len(changed_files),
+            changed_lines=changed_lines,
+            diff_file=manifest["diff_file"],
+        )
+        current_stage = None
 
-    route_input_payload = build_route_input(
-        artifact_text,
-        requirements_text=requirements_text,
-        requirements_from_mr_description=args.use_mr_description_as_requirements,
-        user_requested_exhaustive=args.user_requested_exhaustive,
-        behavior_change_ambiguous=args.behavior_change_ambiguous,
-    )
-    route_plan = _plan_route(manifest, route_input_payload)
+        current_stage = "requirements"
+        observer.start_stage(current_stage, "Persisting requirements/spec input")
+        requirements_text = _materialize_requirements(
+            manifest,
+            requirements_text=args.requirements_text,
+            requirements_file=args.requirements_file,
+            requirements_stdin=args.requirements_stdin,
+            use_mr_description=args.use_mr_description_as_requirements,
+            mr_metadata=mr_metadata,
+        )
+        requirements_source = "none"
+        if args.requirements_text:
+            requirements_source = "inline"
+        elif args.requirements_file:
+            requirements_source = "file"
+        elif args.requirements_stdin:
+            requirements_source = "stdin"
+        elif args.use_mr_description_as_requirements:
+            requirements_source = "mr_description"
+        observer.complete_stage(
+            current_stage,
+            "Requirements input ready",
+            source=requirements_source,
+            has_requirements=bool(requirements_text.strip()),
+            requirements_chars=len(requirements_text),
+        )
+        current_stage = None
 
-    _build_review_context_artifact(manifest, project_dir, artifact_text)
-    static_analysis_payload = _write_static_analysis_artifact(
-        manifest,
-        project_dir,
-        route_input_payload.get("changed_files") or [],
-        dry_run=args.dry_run,
-    )
-    _build_shuffled_diff(manifest, artifact_text)
+        current_stage = "routing"
+        observer.start_stage(current_stage, "Building deterministic route input and plan")
+        route_input_payload = build_route_input(
+            artifact_text,
+            requirements_text=requirements_text,
+            requirements_from_mr_description=args.use_mr_description_as_requirements,
+            user_requested_exhaustive=args.user_requested_exhaustive,
+            behavior_change_ambiguous=args.behavior_change_ambiguous,
+        )
+        route_plan = _plan_route(manifest, route_input_payload)
+        observer.set_route_plan(route_input_payload, route_plan)
+        observer.complete_stage(
+            current_stage,
+            "Adaptive route plan ready",
+            summary=route_plan.get("summary"),
+            planned=route_plan.get("total_passes"),
+            full_matrix=route_plan.get("full_matrix"),
+        )
+        current_stage = None
 
-    reviewer_results = _run_reviewers(
-        manifest,
-        route_plan,
-        project_dir=project_dir,
-        requirements_available=bool(requirements_text.strip()),
-        dry_run=args.dry_run,
-        reviewer_timeout_sec=args.reviewer_timeout,
-    )
-    candidates = _build_candidates(
-        reviewer_results,
-        manifest=manifest,
-        route_plan=route_plan,
-        static_analysis_payload=static_analysis_payload,
-    )
-    verified_findings = _run_verification(
-        manifest,
-        candidates=candidates,
-        artifact_text=artifact_text,
-        project_dir=project_dir,
-        requirements_text=requirements_text,
-        dry_run=args.dry_run,
-        verifier_timeout_sec=args.verifier_timeout,
-    )
-    report_text = _write_report(manifest, verified_findings)
+        current_stage = "review_context"
+        observer.start_stage(current_stage, "Building repository/package context")
+        _build_review_context_artifact(manifest, project_dir, artifact_text)
+        review_context_text = _read_text(Path(manifest["review_context_file"]))
+        observer.complete_stage(
+            current_stage,
+            "Review context ready",
+            context_status=(
+                "unavailable"
+                if "Repository/package context unavailable" in review_context_text
+                else "available"
+            ),
+            review_context_file=manifest["review_context_file"],
+        )
+        current_stage = None
 
-    summary = {
-        "run_id": manifest["run_id"],
-        "mode": target.mode,
-        "target": target.display_target,
-        "project_dir": str(project_dir) if project_dir else None,
-        "review_plan_summary": route_plan.get("summary"),
-        "report_file": manifest["report_file"],
-        "manifest_file": manifest["manifest_file"],
-        "reviewers_file": manifest["reviewers_file"],
-        "candidates_file": manifest["candidates_file"],
-        "verified_findings_file": manifest["verified_findings_file"],
-        "verified_finding_count": len(verified_findings),
-        "report_preview": report_text.strip().splitlines()[:8],
-    }
+        current_stage = "static_analysis"
+        observer.start_stage(current_stage, "Running static analysis")
+        static_analysis_payload = _write_static_analysis_artifact(
+            manifest,
+            project_dir,
+            route_input_payload.get("changed_files") or [],
+            dry_run=args.dry_run,
+        )
+        static_analysis_counts = {
+            "go_vet": len(static_analysis_payload.get("go_vet", [])) if isinstance(static_analysis_payload.get("go_vet"), list) else 0,
+            "staticcheck": len(static_analysis_payload.get("staticcheck", [])) if isinstance(static_analysis_payload.get("staticcheck"), list) else 0,
+            "gosec": len(static_analysis_payload.get("gosec", [])) if isinstance(static_analysis_payload.get("gosec"), list) else 0,
+        }
+        observer.complete_stage(
+            current_stage,
+            "Static analysis artifact ready",
+            static_analysis_file=manifest["static_analysis_file"],
+            total_findings=sum(static_analysis_counts.values()),
+            **static_analysis_counts,
+        )
+        current_stage = None
 
-    if args.output_file:
-        _write_json(Path(args.output_file).expanduser().resolve(), summary)
-    return summary
+        current_stage = "shuffle_diff"
+        observer.start_stage(current_stage, "Preparing shuffled diff for pass diversity")
+        _build_shuffled_diff(manifest, artifact_text)
+        observer.complete_stage(
+            current_stage,
+            "Shuffled diff ready",
+            shuffled_diff_file=manifest["shuffled_diff_file"],
+        )
+        current_stage = None
+
+        current_stage = "reviewers"
+        observer.start_stage(current_stage, "Running reviewer passes")
+        reviewer_results, reviewers_summary = _run_reviewers(
+            manifest,
+            route_plan,
+            observer=observer,
+            project_dir=project_dir,
+            requirements_available=bool(requirements_text.strip()),
+            dry_run=args.dry_run,
+            reviewer_timeout_sec=args.reviewer_timeout,
+            max_reviewer_workers=args.max_reviewer_workers,
+        )
+        observer.complete_stage(
+            current_stage,
+            "Reviewer passes completed",
+            completed=reviewers_summary["completed_passes"],
+            succeeded=reviewers_summary["succeeded_passes"],
+            failed=reviewers_summary["failed_passes"],
+            finding_count=reviewers_summary["total_findings"],
+            workers=reviewers_summary["worker_count"],
+        )
+        current_stage = None
+
+        current_stage = "candidates"
+        observer.start_stage(current_stage, "Synthesizing candidate findings")
+        candidates, candidates_summary = _build_candidates(
+            reviewer_results,
+            manifest=manifest,
+            route_plan=route_plan,
+            static_analysis_payload=static_analysis_payload,
+        )
+        observer.complete_stage(
+            current_stage,
+            "Candidate findings ready",
+            candidate_count=candidates_summary["candidate_count"],
+            source_finding_count=candidates_summary["source_finding_count"],
+        )
+        current_stage = None
+
+        current_stage = "verification"
+        observer.start_stage(current_stage, "Running verification batches")
+        verified_findings, verification_summary = _run_verification(
+            manifest,
+            observer=observer,
+            candidates=candidates,
+            artifact_text=artifact_text,
+            project_dir=project_dir,
+            requirements_text=requirements_text,
+            dry_run=args.dry_run,
+            verifier_timeout_sec=args.verifier_timeout,
+            max_verifier_workers=args.max_verifier_workers,
+        )
+        observer.complete_stage(
+            current_stage,
+            "Verification completed",
+            verified_count=verification_summary["verified_count"],
+            batch_count=verification_summary["batch_count"],
+            succeeded=verification_summary["successful_batches"],
+            failed=verification_summary["failed_batches"],
+            workers=verification_summary["worker_count"],
+        )
+        current_stage = None
+
+        current_stage = "report"
+        observer.start_stage(current_stage, "Writing final report")
+        report_text = _write_report(manifest, verified_findings)
+        observer.complete_stage(
+            current_stage,
+            "Final report ready",
+            verified_count=len(verified_findings),
+            report_file=manifest["report_file"],
+        )
+        current_stage = None
+
+        summary = {
+            "contract_version": "ccr.run_summary.v1",
+            "run_id": manifest["run_id"],
+            "mode": target.mode,
+            "target": target.display_target,
+            "project_dir": str(project_dir) if project_dir else None,
+            "run_dir": manifest["run_dir"],
+            "manifest_file": manifest["manifest_file"],
+            "status_file": manifest["status_file"],
+            "trace_file": manifest["trace_file"],
+            "summary_file": manifest["summary_file"],
+            "review_plan_summary": route_plan.get("summary"),
+            "report_file": manifest["report_file"],
+            "reviewers_file": manifest["reviewers_file"],
+            "candidates_file": manifest["candidates_file"],
+            "verified_findings_file": manifest["verified_findings_file"],
+            "reviewer_worker_count": reviewers_summary["worker_count"],
+            "verifier_worker_count": verification_summary["worker_count"],
+            "reviewer_timeout_sec": args.reviewer_timeout,
+            "verifier_timeout_sec": args.verifier_timeout,
+            "duration_ms": observer.current_duration_ms(),
+            "verified_finding_count": len(verified_findings),
+            "report_preview": report_text.strip().splitlines()[:8],
+        }
+
+        observer.complete_run(summary)
+        if args.output_file:
+            _write_json(Path(args.output_file).expanduser().resolve(), summary)
+        return summary
+    except Exception as exc:  # noqa: BLE001
+        if current_stage is not None:
+            observer.fail_stage(current_stage, f"Stage failed: {exc}")
+        observer.fail_run(exc)
+        raise
 
 
 def main() -> None:

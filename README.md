@@ -89,6 +89,7 @@ This runs:
 - `py_compile` on the CCR Python entrypoints
 - `python3 -m unittest discover -s tests -v`
 - smoke invocations for `ccr_run_init.py`, `ccr_routing.py`, `repomap.py`, `review_context.py`, and the deterministic `ccr_run.py` harness in `--dry-run` mode
+- validation that `ccr_run.py` writes a live `status.json`, append-only `trace.jsonl`, and final `run_summary.json`
 
 You can also run the unit tests directly:
 
@@ -124,7 +125,7 @@ ccr-plugin/
 │   │   └── v1/                     # versioned JSON contract schemas for CCR runtime artifacts
 │   └── scripts/
 │       ├── ccr_run_init.py         # isolated run workspace + manifest initializer
-│       ├── ccr_run.py              # deterministic Phase 1 harness: artifact → routing → reviewers → verification → report
+│       ├── ccr_run.py              # deterministic Phase 1.1 harness with live stderr progress, status.json, and trace.jsonl
 │       ├── ccr_routing.py          # adaptive fanout planner (4-14 passes)
 │       ├── repomap.py              # lightweight focused repo map helper for review_context.py
 │       └── llm-proxy/
@@ -167,14 +168,15 @@ All paths inside `quality/agents/ccr.md` use `${CLAUDE_PLUGIN_ROOT}` so the plug
 1. Never post comments without explicit user approval in MR mode.
 2. Always initialize an isolated run workspace first, then run adaptive fanout planning. Logic Pass 1 + Pass 2 + Pass 3 are mandatory; total planned fanout stays within 4-14 passes.
 3. Phase 1 orchestration now runs through the deterministic `quality/scripts/ccr_run.py` harness, which owns artifact prep, routing, reviewer subprocess execution, consolidation, verification, and report generation.
-4. Candidate findings must pass verification before being shown.
-5. Local diff / file / package modes are **report-only** — no posting target exists.
+4. The harness now streams stage progress to stderr and persists `status.json`, `trace.jsonl`, and `run_summary.json` inside each run directory for observability.
+5. Candidate findings must pass verification before being shown.
+6. Local diff / file / package modes are **report-only** — no posting target exists.
 
 See `quality/agents/ccr.md` for the full workflow specification.
 
 ## Status
 
-Phase 1 is now in place: CCR has an isolated run-workspace initializer (`ccr_run_init.py`), a deterministic orchestration harness (`ccr_run.py`), versioned contract schemas under `quality/contracts/v1/`, stdlib unit tests under `tests/`, golden fixtures for routing/context behavior, and a deterministic local smoke harness at `./scripts/smoke.sh`. Posting still remains a separate Phase 2 concern, and broader eval suites are still future work.
+Phase 1.1 is now in place: CCR has an isolated run-workspace initializer (`ccr_run_init.py`), a deterministic orchestration harness (`ccr_run.py`) with live progress logging and run observability artifacts (`status.json`, `trace.jsonl`, `run_summary.json`), versioned contract schemas under `quality/contracts/v1/`, stdlib unit tests under `tests/`, golden fixtures for routing/context behavior, and a deterministic local smoke harness at `./scripts/smoke.sh`. Posting still remains a separate Phase 2 concern, and broader eval suites are still future work.
 
 ## License
 

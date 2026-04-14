@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRRunStatusV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contract_version",
+    "run_id",
+    "state",
+    "started_at",
+    "current_stage",
+    "stages",
+    "reviewers",
+    "verification",
+    "artifacts"
+  ],
+  "properties": {
+    "contract_version": { "const": "ccr.run_status.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["running", "completed", "failed"] },
+    "started_at": { "type": "string", "minLength": 1 },
+    "finished_at": { "type": ["string", "null"] },
+    "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "current_stage": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "required": ["name", "status"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "message": { "type": ["string", "null"] },
+        "started_at": { "type": ["string", "null"] },
+        "ended_at": { "type": ["string", "null"] },
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "stages": { "type": "object", "additionalProperties": true },
+    "target": { "type": "object", "additionalProperties": true },
+    "route_plan": { "type": "object", "additionalProperties": true },
+    "reviewers": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["planned", "completed", "passes"],
+      "properties": {
+        "planned": { "type": "integer", "minimum": 0 },
+        "workers": { "type": "integer", "minimum": 0 },
+        "timeout_sec": { "type": ["integer", "null"], "minimum": 0 },
+        "completed": { "type": "integer", "minimum": 0 },
+        "succeeded": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "estimated_max_duration_sec": { "type": ["integer", "null"], "minimum": 0 },
+        "passes": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["planned_batches", "completed_batches", "batches"],
+      "properties": {
+        "planned_batches": { "type": "integer", "minimum": 0 },
+        "workers": { "type": "integer", "minimum": 0 },
+        "timeout_sec": { "type": ["integer", "null"], "minimum": 0 },
+        "completed_batches": { "type": "integer", "minimum": 0 },
+        "succeeded_batches": { "type": "integer", "minimum": 0 },
+        "failed_batches": { "type": "integer", "minimum": 0 },
+        "estimated_max_duration_sec": { "type": ["integer", "null"], "minimum": 0 },
+        "batches": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "artifacts": { "type": "object", "additionalProperties": { "type": "string" } },
+    "summary": { "type": "object", "additionalProperties": true },
+    "last_event": { "type": ["object", "null"], "additionalProperties": true },
+    "error": { "type": ["object", "null"], "additionalProperties": true }
+  }
+}
