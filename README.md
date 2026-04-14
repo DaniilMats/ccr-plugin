@@ -37,11 +37,11 @@ From inside Claude Code:
 
 ```
 /plugin marketplace add DaniilMats/ccr-plugin
-/plugin install ccr@ccr-marketplace
+/plugin install quality@ccr-marketplace
 /reload-plugins
 ```
 
-Then verify with `/plugin` — `ccr` should be listed as installed.
+Then verify with `/plugin` — `quality` should be listed as installed.
 
 ### Local development
 
@@ -49,7 +49,7 @@ Then verify with `/plugin` — `ccr` should be listed as installed.
 git clone https://github.com/DaniilMats/ccr-plugin ~/ccr-plugin
 # From inside Claude Code:
 /plugin marketplace add ~/ccr-plugin
-/plugin install ccr@ccr-marketplace
+/plugin install quality@ccr-marketplace
 ```
 
 ## Usage
@@ -64,7 +64,7 @@ Once installed, invoke the agent from Claude Code by asking any of:
 > use ccr to review package:internal/service
 ```
 
-Or explicitly spawn the agent via `Task(ccr:ccr, "...")` — the plugin registers it under the namespaced id `ccr:ccr`.
+Or explicitly spawn the agent via `Task(quality:ccr, "...")` — the plugin registers it under the namespaced id `quality:ccr` (plugin name `quality` + agent file `ccr.md`).
 
 CCR walks the user through:
 1. Fetching the MR / preparing the local artifact
@@ -77,13 +77,13 @@ CCR walks the user through:
 
 ## Structure
 
-The repo is a Claude Code marketplace hosting a single plugin in the `ccr/` subdirectory:
+The repo is a Claude Code marketplace hosting a single plugin in the `quality/` subdirectory:
 
 ```
 ccr-plugin/
 ├── .claude-plugin/
-│   └── marketplace.json            # marketplace manifest (plugins[].source = "./ccr")
-├── ccr/                            # the plugin — ${CLAUDE_PLUGIN_ROOT} resolves here
+│   └── marketplace.json            # marketplace manifest (plugins[].source = "./quality")
+├── quality/                        # the plugin — ${CLAUDE_PLUGIN_ROOT} resolves here
 │   ├── .claude-plugin/
 │   │   └── plugin.json             # plugin manifest
 │   ├── agents/
@@ -120,7 +120,7 @@ ccr-plugin/
 └── README.md
 ```
 
-All paths inside `ccr/agents/ccr.md` use `${CLAUDE_PLUGIN_ROOT}` so the plugin works regardless of where it's installed. At runtime Claude Code resolves `${CLAUDE_PLUGIN_ROOT}` to `~/.claude/plugins/cache/ccr-marketplace/ccr/<version>/` on each user's machine.
+All paths inside `quality/agents/ccr.md` use `${CLAUDE_PLUGIN_ROOT}` so the plugin works regardless of where it's installed. At runtime Claude Code resolves `${CLAUDE_PLUGIN_ROOT}` to `~/.claude/plugins/cache/ccr-marketplace/quality/<version>/` on each user's machine.
 
 ## Critical Rules (from the agent)
 
@@ -130,7 +130,7 @@ All paths inside `ccr/agents/ccr.md` use `${CLAUDE_PLUGIN_ROOT}` so the plugin w
 4. Candidate findings must pass verification before being shown.
 5. Local diff / file / package modes are **report-only** — no posting target exists.
 
-See `ccr/agents/ccr.md` for the full workflow specification.
+See `quality/agents/ccr.md` for the full workflow specification.
 
 ## Status
 

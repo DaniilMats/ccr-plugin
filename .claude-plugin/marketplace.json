@@ -9,13 +9,13 @@
   },
   "plugins": [
     {
-      "name": "ccr",
-      "description": "Adaptive multi-model code reviewer for GitLab MRs, local diffs, Go files, and Go packages. Routes 4-10 reviewer passes across Logic/Security/Concurrency/Performance/Requirements personas, verifies consolidated findings, and posts approved inline comments for MR mode.",
+      "name": "quality",
+      "description": "Adaptive multi-model code reviewer (CCR). Reviews GitLab MRs, local diffs, Go files, and Go packages. Routes 4-10 reviewer passes across Logic/Security/Concurrency/Performance/Requirements personas, verifies consolidated findings, and posts approved inline comments for MR mode.",
       "version": "0.1.0",
       "author": {
         "name": "Daniil Matsiutsia"
       },
-      "source": "./ccr",
+      "source": "./quality",
       "category": "code-review"
     }
   ]
