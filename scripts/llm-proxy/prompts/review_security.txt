@@ -1,0 +1,115 @@
+Review the code artifact for security issues only: SQL injection via string concatenation, hardcoded credentials or secrets, path traversal, authentication bypass, and unsafe input handling. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret local trust boundaries, existing auth patterns, and neighboring tests before flagging an issue. Skip logic, performance, style, and concurrency concerns — those are reviewed separately. Return a JSON object with findings for each issue found, or an empty findings array if there are none.
+
+---
+
+Example 1 — SQL injection via string concatenation
+
+Input:
+```diff
+--- a/internal/store/product.go
++++ b/internal/store/product.go
+@@ -11,7 +11,10 @@ func (s *Store) SearchProducts(ctx context.Context, query string) ([]*Product, error) {
++	sql := "SELECT id, name, price FROM products WHERE name LIKE '%" + query + "%'"
++	rows, err := s.db.QueryContext(ctx, sql)
++	if err != nil {
++		return nil, fmt.Errorf("search products: %w", err)
++	}
++	defer rows.Close()
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/store/product.go","line":12,"message":"SQL query is built by string concatenation with unsanitized user input. An attacker can inject arbitrary SQL. Use a parameterized query: db.QueryContext(ctx, \"SELECT id, name, price FROM products WHERE name LIKE ?\", \"%\"+query+\"%\")"}],"summary":"SQL injection vulnerability: user-controlled input is concatenated directly into the query string. Replace with a parameterized query."}
+
+---
+
+Example 2 — Hardcoded secret
+
+Input:
+```diff
+--- a/internal/auth/jwt.go
++++ b/internal/auth/jwt.go
+@@ -6,6 +6,12 @@ package auth
++const defaultSigningKey = "s3cr3t-jwt-signing-key-do-not-share"
++
++func NewJWTSigner() *JWTSigner {
++	return &JWTSigner{key: []byte(defaultSigningKey)}
++}
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/auth/jwt.go","line":7,"message":"JWT signing key is hardcoded as a string constant. Anyone with read access to the repository can forge tokens. Load the key from an environment variable or secrets manager (e.g., os.Getenv(\"JWT_SIGNING_KEY\")) and return an error if it is empty."}],"summary":"Hardcoded JWT signing key found in source. This is a critical credential exposure; the key must be loaded from a secret store at runtime."}
+
+---
+
+Example 3 — Path traversal
+
+Input:
+```diff
+--- a/internal/handler/file.go
++++ b/internal/handler/file.go
+@@ -18,8 +18,13 @@ func (h *Handler) ServeFile(w http.ResponseWriter, r *http.Request) {
++	name := r.URL.Query().Get("name")
++	path := filepath.Join(h.baseDir, name)
++	data, err := os.ReadFile(path)
++	if err != nil {
++		http.Error(w, "not found", http.StatusNotFound)
++		return
++	}
++	w.Write(data)
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/handler/file.go","line":20,"message":"filepath.Join does not prevent path traversal. A request with name=\"../../etc/passwd\" resolves outside baseDir. After joining, verify the resolved path starts with baseDir: if !strings.HasPrefix(path, h.baseDir+string(os.PathSeparator)) { http.Error(w, \"forbidden\", 403); return }"}],"summary":"Path traversal vulnerability: user-supplied filename is joined to baseDir without verifying the result stays within baseDir. An attacker can read arbitrary files on the server."}
+
+---
+
+Example 4 — No security issues found
+
+Input:
+```diff
+--- a/internal/handler/ping.go
++++ b/internal/handler/ping.go
+@@ -4,6 +4,10 @@ package handler
++func (h *Handler) Ping(w http.ResponseWriter, r *http.Request) {
++	w.WriteHeader(http.StatusOK)
++	w.Write([]byte("pong"))
++}
+```
+
+Finding:
+{"findings":[],"summary":"No security issues found. The handler returns a static response with no user input, no database access, and no file system operations."}
+
+---
+
+## Code Artifact to Review
+
+{diff}
+
+## Static Analysis Output
+
+{static_analysis}
+
+## Repository / Package Context
+
+{review_context}
+
+{style_guide_section}
+
+## Output Format
+
+Respond with ONLY a JSON object — no markdown fences, no preamble:
+
+{
+  "findings": [
+    {
+      "severity": "bug|warning|info",
+      "file": "path/to/file.go",
+      "line": 42,
+      "message": "Concise description of the security issue and how to fix it."
+    }
+  ],
+  "summary": "Overall security assessment. Highlight critical vulnerabilities or confirm the diff is clean if no issues found."
+}
+
+Only include findings for security issues visible in the diff. Do not report logic, performance, style, or concurrency findings.

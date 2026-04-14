@@ -1,0 +1,121 @@
+Review the code artifact for logic and correctness issues only: unchecked errors, nil pointer dereferences, off-by-one errors, incorrect conditionals, and invariant violations. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret local invariants, neighboring tests, and established package patterns. Skip style, performance, security, and concurrency concerns — those are reviewed separately. Return a JSON object with findings for each issue found, or an empty findings array if there are none.
+
+---
+
+Example 1 — Unchecked error return
+
+Input:
+```diff
+--- a/internal/store/user.go
++++ b/internal/store/user.go
+@@ -14,7 +14,10 @@ func (s *Store) CreateUser(ctx context.Context, u *User) error {
+ 	tx, err := s.db.BeginTx(ctx, nil)
+ 	if err != nil {
+ 		return fmt.Errorf("begin tx: %w", err)
+ 	}
++	_, err = tx.ExecContext(ctx, insertUserSQL, u.ID, u.Email)
++	tx.Commit()
++	return nil
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/store/user.go","line":18,"message":"Error from ExecContext is not checked before calling tx.Commit(). A failed insert would be silently committed. Check err after ExecContext and call tx.Rollback() on failure."}],"summary":"Unchecked error from ExecContext allows a failed insert to be silently committed. Must check and handle the error."}
+
+---
+
+Example 2 — Off-by-one in slice bounds
+
+Input:
+```diff
+--- a/internal/pagination/page.go
++++ b/internal/pagination/page.go
+@@ -8,9 +8,13 @@ func Paginate(items []string, page, size int) []string {
++	start := page * size
++	end := start + size
++	if start >= len(items) {
++		return nil
++	}
++	return items[start:end]
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/pagination/page.go","line":13,"message":"end is not clamped to len(items). If the last page is partial, items[start:end] panics with an index out of range. Use: if end > len(items) { end = len(items) }"}],"summary":"Off-by-one slice bounds: end must be clamped to len(items) to avoid a runtime panic on the last partial page."}
+
+---
+
+Example 3 — Nil dereference on empty result
+
+Input:
+```diff
+--- a/internal/service/order.go
++++ b/internal/service/order.go
+@@ -21,8 +21,12 @@ func (s *Service) GetOrder(ctx context.Context, id string) (*Order, error) {
++	rows, err := s.db.QueryContext(ctx, selectOrderSQL, id)
++	if err != nil {
++		return nil, fmt.Errorf("query order: %w", err)
++	}
++	defer rows.Close()
++	var o Order
++	rows.Scan(&o.ID, &o.Status, &o.Total)
++	return &o, nil
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/service/order.go","line":28,"message":"rows.Scan is called unconditionally without first checking rows.Next(). When no row matches id, Scan is a no-op and a zero-value Order is returned instead of an appropriate not-found error. Wrap the Scan call in if rows.Next() { ... } and return an error when no row is found."}],"summary":"Missing rows.Next() check causes a zero-value struct to be returned silently when no order matches the given id."}
+
+---
+
+Example 4 — No logic issues found
+
+Input:
+```diff
+--- a/internal/service/health.go
++++ b/internal/service/health.go
+@@ -5,6 +5,14 @@ package service
++func (s *Service) Healthy(ctx context.Context) error {
++	if err := s.db.PingContext(ctx); err != nil {
++		return fmt.Errorf("db ping: %w", err)
++	}
++	return nil
++}
+```
+
+Finding:
+{"findings":[],"summary":"The health check implementation is correct: all errors are checked, context is propagated, and the error is wrapped with context. No logic issues found."}
+
+---
+
+## Code Artifact to Review
+
+{diff}
+
+## Static Analysis Output
+
+{static_analysis}
+
+## Repository / Package Context
+
+{review_context}
+
+{style_guide_section}
+
+## Output Format
+
+Respond with ONLY a JSON object — no markdown fences, no preamble:
+
+{
+  "findings": [
+    {
+      "severity": "bug|warning|info",
+      "file": "path/to/file.go",
+      "line": 42,
+      "message": "Concise description of the logic or correctness issue and how to fix it."
+    }
+  ],
+  "summary": "Overall assessment of logic and correctness. Note any critical bugs or confirm correctness if no issues found."
+}
+
+Only include findings for logic and correctness issues visible in the diff. Do not report style, performance, security, or concurrency findings.

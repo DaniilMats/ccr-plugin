@@ -1,0 +1,138 @@
+Review the code artifact for performance issues only: N+1 database queries, unnecessary memory allocations, inefficient algorithms, string concatenation in loops, and resource leaks from unclosed handles. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret hot-path expectations, batching conventions, and neighboring tests before flagging an issue. Skip logic, security, style, and concurrency concerns — those are reviewed separately. Return a JSON object with findings for each issue found, or an empty findings array if there are none.
+
+---
+
+Example 1 — N+1 database queries
+
+Input:
+```diff
+--- a/internal/service/order.go
++++ b/internal/service/order.go
+@@ -17,11 +17,16 @@ func (s *Service) ListOrdersWithItems(ctx context.Context) ([]*Order, error) {
++	orders, err := s.orderStore.ListOrders(ctx)
++	if err != nil {
++		return nil, fmt.Errorf("list orders: %w", err)
++	}
++	for _, o := range orders {
++		items, err := s.itemStore.GetItemsByOrder(ctx, o.ID)
++		if err != nil {
++			return nil, fmt.Errorf("get items: %w", err)
++		}
++		o.Items = items
++	}
++	return orders, nil
+ }
+```
+
+Finding:
+{"findings":[{"severity":"warning","file":"internal/service/order.go","line":22,"message":"GetItemsByOrder is called inside the loop, executing one query per order (N+1 pattern). For 100 orders this is 101 database round-trips. Add a batch method (e.g., GetItemsByOrderIDs) that accepts all order IDs and loads items in a single query, then map them back to orders in memory."}],"summary":"N+1 query pattern: item lookup runs one database query per order. Batch the item fetch using a single query with all order IDs."}
+
+---
+
+Example 2 — Missing slice pre-allocation
+
+Input:
+```diff
+--- a/internal/transform/mapper.go
++++ b/internal/transform/mapper.go
+@@ -8,10 +8,14 @@ func ToDTO(users []*User) []*UserDTO {
++	var dtos []*UserDTO
++	for _, u := range users {
++		dtos = append(dtos, &UserDTO{
++			ID:    u.ID,
++			Email: u.Email,
++		})
++	}
++	return dtos
+ }
+```
+
+Finding:
+{"findings":[{"severity":"info","file":"internal/transform/mapper.go","line":9,"message":"The slice starts with zero capacity and grows via repeated append, causing multiple allocations and copies as it doubles. Since the output length equals the input length, pre-allocate: dtos := make([]*UserDTO, 0, len(users))"}],"summary":"Missing pre-allocation: the result slice is grown dynamically when the final size is known upfront. Use make([]*UserDTO, 0, len(users)) to avoid repeated reallocations."}
+
+---
+
+Example 3 — String concatenation in loop
+
+Input:
+```diff
+--- a/internal/report/builder.go
++++ b/internal/report/builder.go
+@@ -12,9 +12,13 @@ func BuildCSV(rows [][]string) string {
++	result := ""
++	for _, row := range rows {
++		for i, field := range row {
++			if i > 0 {
++				result += ","
++			}
++			result += field
++		}
++		result += "\n"
++	}
++	return result
+ }
+```
+
+Finding:
+{"findings":[{"severity":"warning","file":"internal/report/builder.go","line":13,"message":"String concatenation with += inside a loop allocates a new string on every iteration, making this O(n²) in total bytes written. Use strings.Builder and WriteString for O(n) performance: var b strings.Builder; b.WriteString(field)"}],"summary":"Quadratic string concatenation: result += field inside a loop causes O(n²) allocations. Replace with strings.Builder or encoding/csv.Writer."}
+
+---
+
+Example 4 — No performance issues found
+
+Input:
+```diff
+--- a/internal/store/tag.go
++++ b/internal/store/tag.go
+@@ -9,11 +9,15 @@ func (s *Store) GetTags(ctx context.Context, ids []int64) ([]*Tag, error) {
++	tags := make([]*Tag, 0, len(ids))
++	rows, err := s.db.QueryContext(ctx, selectTagsSQL, pq.Array(ids))
++	if err != nil {
++		return nil, fmt.Errorf("get tags: %w", err)
++	}
++	defer rows.Close()
++	for rows.Next() {
++		var t Tag
++		rows.Scan(&t.ID, &t.Name)
++		tags = append(tags, &t)
++	}
++	return tags, nil
+ }
+```
+
+Finding:
+{"findings":[],"summary":"No performance issues found. The slice is pre-allocated, a single batch query is used, and rows.Close() is deferred to prevent resource leaks."}
+
+---
+
+## Code Artifact to Review
+
+{diff}
+
+## Static Analysis Output
+
+{static_analysis}
+
+## Repository / Package Context
+
+{review_context}
+
+{style_guide_section}
+
+## Output Format
+
+Respond with ONLY a JSON object — no markdown fences, no preamble:
+
+{
+  "findings": [
+    {
+      "severity": "bug|warning|info",
+      "file": "path/to/file.go",
+      "line": 42,
+      "message": "Concise description of the performance issue and how to fix it."
+    }
+  ],
+  "summary": "Overall performance assessment. Call out the most costly issues or confirm efficiency if no issues found."
+}
+
+Only include findings for performance issues visible in the diff. Do not report logic, security, style, or concurrency findings.

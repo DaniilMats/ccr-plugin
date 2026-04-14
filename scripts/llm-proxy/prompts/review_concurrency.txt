@@ -1,0 +1,125 @@
+Review the code artifact for concurrency issues only: unsynchronized shared state, goroutine leaks, missing mutex protection, channel misuse, and context propagation failures. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret local lifecycle expectations, shutdown patterns, and neighboring tests before flagging an issue. Skip logic, security, performance, and style concerns — those are reviewed separately. Return a JSON object with findings for each issue found, or an empty findings array if there are none.
+
+---
+
+Example 1 — Unsynchronized map access
+
+Input:
+```diff
+--- a/internal/cache/cache.go
++++ b/internal/cache/cache.go
+@@ -8,12 +8,16 @@ type Cache struct {
++	items map[string]string
+ }
++
++func (c *Cache) Set(key, value string) {
++	c.items[key] = value
++}
++
++func (c *Cache) Get(key string) (string, bool) {
++	v, ok := c.items[key]
++	return v, ok
++}
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/cache/cache.go","line":13,"message":"Map reads and writes are not protected by a mutex. Concurrent calls to Set and Get on the same Cache will trigger a data race and may cause a fatal runtime crash. Add a sync.RWMutex field: use Lock/Unlock in Set and RLock/RUnlock in Get."}],"summary":"Data race: the cache map is accessed concurrently without synchronization. Add a sync.RWMutex to protect all map operations."}
+
+---
+
+Example 2 — Goroutine leak
+
+Input:
+```diff
+--- a/internal/worker/poller.go
++++ b/internal/worker/poller.go
+@@ -14,10 +14,15 @@ func (w *Worker) Start() {
++	go func() {
++		for {
++			w.poll()
++			time.Sleep(5 * time.Second)
++		}
++	}()
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/worker/poller.go","line":15,"message":"The goroutine loops forever with no way to stop it. When the worker is shut down, the goroutine leaks. Accept a context.Context in Start and break the loop when ctx.Done() is closed: use a select with time.After(5*time.Second) and case <-ctx.Done(): return."}],"summary":"Goroutine leak: the polling goroutine has no shutdown mechanism. It will run for the lifetime of the process with no way to cancel it on graceful shutdown."}
+
+---
+
+Example 3 — Context not propagated
+
+Input:
+```diff
+--- a/internal/service/notify.go
++++ b/internal/service/notify.go
+@@ -9,10 +9,14 @@ func (s *Service) Notify(ctx context.Context, userID string, msg string) error {
++	user, err := s.userStore.GetUser(context.Background(), userID)
++	if err != nil {
++		return fmt.Errorf("get user: %w", err)
++	}
++	return s.emailClient.Send(ctx, user.Email, msg)
+ }
+```
+
+Finding:
+{"findings":[{"severity":"warning","file":"internal/service/notify.go","line":11,"message":"GetUser is called with context.Background() instead of the caller-provided ctx. If the caller's context is cancelled (e.g., request timeout), the database call will not be cancelled and will continue running unnecessarily. Pass ctx to GetUser."}],"summary":"Context is dropped on the GetUser call: context.Background() is used instead of the caller's ctx, preventing cancellation propagation."}
+
+---
+
+Example 4 — No concurrency issues found
+
+Input:
+```diff
+--- a/internal/service/counter.go
++++ b/internal/service/counter.go
+@@ -5,10 +5,16 @@ package service
++type Counter struct {
++	mu    sync.Mutex
++	count int64
++}
++
++func (c *Counter) Inc() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.count++
++}
+```
+
+Finding:
+{"findings":[],"summary":"No concurrency issues found. The mutex is correctly used with defer to protect the counter increment against concurrent access."}
+
+---
+
+## Code Artifact to Review
+
+{diff}
+
+## Static Analysis Output
+
+{static_analysis}
+
+## Repository / Package Context
+
+{review_context}
+
+{style_guide_section}
+
+## Output Format
+
+Respond with ONLY a JSON object — no markdown fences, no preamble:
+
+{
+  "findings": [
+    {
+      "severity": "bug|warning|info",
+      "file": "path/to/file.go",
+      "line": 42,
+      "message": "Concise description of the concurrency issue and how to fix it."
+    }
+  ],
+  "summary": "Overall concurrency assessment. Highlight races or leaks, or confirm thread safety if no issues found."
+}
+
+Only include findings for concurrency issues visible in the diff. Do not report logic, security, performance, or style findings.

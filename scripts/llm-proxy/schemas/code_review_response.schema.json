@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "required": ["findings", "summary"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "file", "line", "message"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["bug", "warning", "info"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "summary": { "type": "string" },
+    "raw_response": { "type": "string" }
+  }
+}

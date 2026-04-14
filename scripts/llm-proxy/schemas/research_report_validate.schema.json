@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ResearchReportValidateResponse",
+  "description": "Structured response from LLM semantic validation of a research report.",
+  "type": "object",
+  "required": ["verdict", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "FAIL"],
+      "description": "Overall verdict: PASS if all semantic checks pass, FAIL if any check fails."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Per-check evaluation results.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["check", "status", "theme", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "type": "string",
+            "description": "The check name (e.g., blooms_depth, counterpoint, claim_specificity, confidence)."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail"],
+            "description": "Whether this check passed or failed."
+          },
+          "theme": {
+            "type": "string",
+            "description": "The theme or section this finding applies to, or 'overall'."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Explanation of why this check passed or failed."
+          }
+        }
+      }
+    }
+  }
+}

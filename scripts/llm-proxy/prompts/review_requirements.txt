@@ -1,0 +1,145 @@
+Review the code artifact against the provided requirements for compliance gaps only: missing validations for required fields, unhandled edge cases specified in the requirements, behavior that diverges from the spec, and inputs or states the requirements explicitly address but the code ignores. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret local naming, neighboring tests, and established package patterns before deciding that behavior diverges from the spec. Skip style, performance, security, and concurrency concerns — those are reviewed separately. Return a JSON object with findings for each requirements gap found, or an empty findings array if the artifact is compliant.
+
+---
+
+Example 1 — Missing required field validation
+
+Input:
+```diff
+--- a/internal/handler/user.go
++++ b/internal/handler/user.go
+@@ -14,11 +14,16 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
++	var req CreateUserRequest
++	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
++		http.Error(w, "invalid body", http.StatusBadRequest)
++		return
++	}
++	user, err := h.svc.CreateUser(r.Context(), req.Email, req.Name)
++	if err != nil {
++		http.Error(w, "internal error", http.StatusInternalServerError)
++		return
++	}
++	json.NewEncoder(w).Encode(user)
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/handler/user.go","line":20,"message":"The requirements state that email and name are required fields, but the handler passes them to the service without validating that they are non-empty. A request with an empty email would create an invalid user. Add validation: if req.Email == \"\" || req.Name == \"\" { http.Error(w, \"email and name are required\", http.StatusBadRequest); return }"}],"summary":"Required field validation is missing: the spec requires email and name to be non-empty, but the handler does not enforce this before invoking the service."}
+
+---
+
+Example 2 — Missing pagination limit enforcement
+
+Input:
+```diff
+--- a/internal/handler/product.go
++++ b/internal/handler/product.go
+@@ -11,10 +11,15 @@ func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
++	limitStr := r.URL.Query().Get("limit")
++	limit, err := strconv.Atoi(limitStr)
++	if err != nil || limit <= 0 {
++		limit = 20
++	}
++	products, err := h.svc.ListProducts(r.Context(), limit)
++	if err != nil {
++		http.Error(w, "internal error", http.StatusInternalServerError)
++		return
++	}
++	json.NewEncoder(w).Encode(products)
+ }
+```
+
+Finding:
+{"findings":[{"severity":"warning","file":"internal/handler/product.go","line":15,"message":"The requirements specify a maximum page size of 100. The handler defaults to 20 but does not cap user-supplied limit values, allowing a caller to request thousands of products in a single response. Add: if limit > 100 { limit = 100 }"}],"summary":"Missing upper bound on limit parameter: the spec requires a max page size of 100, but the handler accepts any positive limit from callers."}
+
+---
+
+Example 3 — Missing spec-mandated status code
+
+Input:
+```diff
+--- a/internal/handler/auth.go
++++ b/internal/handler/auth.go
+@@ -18,10 +18,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
++	token, err := h.svc.Authenticate(r.Context(), req.Username, req.Password)
++	if err != nil {
++		if errors.Is(err, service.ErrInvalidCredentials) {
++			http.Error(w, "unauthorized", http.StatusInternalServerError)
++			return
++		}
++		http.Error(w, "internal error", http.StatusInternalServerError)
++		return
++	}
++	json.NewEncoder(w).Encode(TokenResponse{Token: token})
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/handler/auth.go","line":21,"message":"The requirements specify that invalid credentials must return HTTP 401 Unauthorized, but the handler returns HTTP 500 Internal Server Error for ErrInvalidCredentials. Change StatusInternalServerError to StatusUnauthorized for that branch."}],"summary":"Wrong HTTP status code for failed authentication: the spec requires 401, but the code returns 500 for invalid credentials."}
+
+---
+
+Example 4 — No requirements gaps found
+
+Input:
+```diff
+--- a/internal/handler/item.go
++++ b/internal/handler/item.go
+@@ -9,12 +9,18 @@ func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	if id == "" {
++		http.Error(w, "id is required", http.StatusBadRequest)
++		return
++	}
++	if err := h.svc.DeleteItem(r.Context(), id); err != nil {
++		if errors.Is(err, service.ErrNotFound) {
++			http.Error(w, "not found", http.StatusNotFound)
++			return
++		}
++		http.Error(w, "internal error", http.StatusInternalServerError)
++		return
++	}
++	w.WriteHeader(http.StatusNoContent)
+ }
+```
+
+Finding:
+{"findings":[],"summary":"The implementation matches the requirements: id is validated as required, missing items return 404, successful deletion returns 204 No Content, and unexpected errors return 500."}
+
+---
+
+## Code Artifact to Review
+
+{diff}
+
+## Requirements
+
+{requirements}
+
+## Static Analysis Output
+
+{static_analysis}
+
+## Repository / Package Context
+
+{review_context}
+
+{style_guide_section}
+
+## Output Format
+
+Respond with ONLY a JSON object — no markdown fences, no preamble:
+
+{
+  "findings": [
+    {
+      "severity": "bug|warning|info",
+      "file": "path/to/file.go",
+      "line": 42,
+      "message": "Concise description of the requirements gap and what the spec expects instead."
+    }
+  ],
+  "summary": "Overall compliance assessment. Reference specific requirements that are unmet, or confirm compliance if no gaps found."
+}
+
+Only include findings for requirements compliance gaps visible in the diff. Do not report logic, security, performance, style, or concurrency findings.

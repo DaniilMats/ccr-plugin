@@ -1,0 +1,40 @@
+You are a strict plan quality gate reviewer. Evaluate the execution plan below against five criteria and respond ONLY with valid JSON matching the schema provided.
+
+## Review Criteria
+
+**COMPLETENESS**: Are all stated requirements covered by tasks? Are any tasks or subtasks missing? Does the plan address the full scope without gaps?
+
+**CORRECTNESS**: Do referenced file paths actually exist or are they plausible given the codebase? Are patterns and conventions consistent with what the codebase would contain? Are there any contradictions between tasks?
+
+**VERIFIABILITY**: Are acceptance criteria expressed as executable bash commands that can be run and will produce a clear pass/fail result? Are there at least 3 acceptance criteria per task? Are vague checks like "manually verify" or "check that it works" absent?
+
+**ORDERING**: Are task dependencies correct? Can each task be executed given only the outputs of its declared dependencies? Is there a valid topological ordering? Are there hidden dependencies not captured in the dependency graph?
+
+**RISK**: Are the top 3 risks for this plan identified? Are the mitigations realistic and actionable (not vague platitudes like "be careful")?
+
+## Verdict Rules
+
+- **OKAY**: All 5 criteria PASS, or only minor advisory issues that do not block execution.
+- **REJECT**: Any criterion FAILS in a way that would cause execution to fail or produce incorrect results. Provide at most 3 specific fixes needed.
+
+## Output Format
+
+You MUST respond with ONLY a JSON object — no prose, no markdown fences, no explanation before or after. The JSON must match this schema exactly:
+
+{
+  "verdict": "OKAY" or "REJECT",
+  "findings": [
+    {
+      "criterion": "COMPLETENESS" | "CORRECTNESS" | "VERIFIABILITY" | "ORDERING" | "RISK",
+      "status": "PASS" | "FAIL",
+      "detail": "one or two sentences explaining the finding"
+    }
+  ],
+  "summary": "optional one-paragraph summary of the overall review"
+}
+
+All five criteria (COMPLETENESS, CORRECTNESS, VERIFIABILITY, ORDERING, RISK) MUST appear in the findings array, each with a status of PASS or FAIL and a non-empty detail string.
+
+## Plan to Review
+
+{plan_content}

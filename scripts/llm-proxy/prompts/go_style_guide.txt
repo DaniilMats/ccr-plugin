@@ -1,0 +1,195 @@
+# Go Style Guide
+
+## Formatting
+
+- Always run `gofmt` on all Go files before committing; all code must be gofmt-clean
+- Use `goimports` to manage import grouping automatically
+- Maximum line length: ~100 characters (gofmt does not enforce this, but reviewers should flag very long lines)
+- Use tabs for indentation (not spaces) — gofmt enforces this
+
+## Imports
+
+Group imports in three blocks, separated by blank lines:
+1. Standard library
+2. External/third-party packages
+3. Internal packages (same module)
+
+```go
+import (
+    "context"
+    "fmt"
+    "net/http"
+
+    "github.com/pkg/errors"
+    "google.golang.org/grpc"
+
+    "mymodule/internal/pkg/util"
+)
+```
+
+Never dot-import (`import . "pkg"`) except in test files when necessary.
+
+## Naming Conventions
+
+- **Packages**: lowercase, single word, no underscores or mixedCaps (`package httpclient`, NOT `package http_client`)
+- **Exported names**: PascalCase (`UserService`, `GetUser`)
+- **Unexported names**: camelCase (`getUserByID`, `maxRetries`)
+- **Constants**: PascalCase for exported, camelCase for unexported; avoid ALL_CAPS
+- **Acronyms**: keep consistent case (`userID`, `httpClient`, `URL`, `ID`, `API`)
+- **Receiver names**: short abbreviation of the type, consistent across all methods (`u *User`, `s *Server`, `c *Client`)
+- **Error variables**: `ErrNotFound`, `ErrTimeout` (exported); `errInvalidInput` (unexported)
+- **Interface names**: single-method interfaces named by the method + "-er" (`Reader`, `Writer`, `Stringer`)
+- **Test files**: suffix with `_test.go` (`user_handler_test.go`)
+- **Test functions**: `TestFunctionName_Scenario` (e.g., `TestGetUser_NotFound`)
+
+## Error Handling
+
+Always check errors — never discard with `_` unless intentional and commented:
+
+```go
+// Good
+result, err := doSomething()
+if err != nil {
+    return fmt.Errorf("doSomething: %w", err)
+}
+
+// Bad — error silently discarded
+result, _ = doSomething()
+```
+
+Wrap errors with context using `%w` for unwrappability:
+
+```go
+if err != nil {
+    return fmt.Errorf("fetching user %d: %w", id, err)
+}
+```
+
+Use `errors.Is` and `errors.As` for error inspection — never string comparison:
+
+```go
+if errors.Is(err, sql.ErrNoRows) { ... }
+```
+
+Sentinel errors for known conditions:
+
+```go
+var ErrNotFound = errors.New("not found")
+```
+
+## Interface Design
+
+- **Accept interfaces, return structs** — callers depend on behavior, not implementation
+- **Define interfaces at the consumer** — the package that uses the interface defines it
+- **Keep interfaces small** — prefer single-method interfaces; compose larger behaviors
+
+```go
+// Good — small, composable
+type Reader interface { Read(p []byte) (n int, err error) }
+type Writer interface { Write(p []byte) (n int, err error) }
+type ReadWriter interface { Reader; Writer }
+
+// Bad — fat interface
+type Storage interface {
+    Get(...) ...
+    Set(...) ...
+    Delete(...) ...
+    List(...) ...
+    // 20 more methods
+}
+```
+
+## Concurrency and Context
+
+- Always accept `context.Context` as the first parameter of functions that do I/O
+- Propagate context through the entire call chain — never store context in structs
+- Use `context.WithTimeout` or `context.WithDeadline` for external calls
+- Protect shared state with `sync.Mutex` or channels; document which mutex protects which fields
+- Use `sync.WaitGroup` for goroutine lifecycle management
+
+```go
+// Good
+func (s *Service) GetUser(ctx context.Context, id int64) (*User, error) { ... }
+
+// Bad — context not propagated
+func (s *Service) GetUser(id int64) (*User, error) { ... }
+```
+
+## Testing Patterns
+
+Use table-driven tests for multiple cases:
+
+```go
+func TestParseUser_Scenarios(t *testing.T) {
+    tests := []struct {
+        name    string
+        input   string
+        want    *User
+        wantErr bool
+    }{
+        {name: "valid input", input: `{"id":1}`, want: &User{ID: 1}},
+        {name: "empty input", input: ``, wantErr: true},
+        {name: "invalid JSON", input: `{bad}`, wantErr: true},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := ParseUser(tt.input)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("ParseUser() error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            // assert got == tt.want
+        })
+    }
+}
+```
+
+- Use `t.Helper()` in helper functions
+- Use `t.Parallel()` where safe to parallelize tests
+- Prefer `testify/assert` or stdlib over `reflect.DeepEqual` for assertions
+
+## Performance Patterns
+
+Pre-allocate slices when size is known:
+
+```go
+// Good
+results := make([]Result, 0, len(items))
+
+// Bad — repeated allocations
+var results []Result
+```
+
+Use `strings.Builder` for string construction in loops:
+
+```go
+var b strings.Builder
+for _, s := range parts {
+    b.WriteString(s)
+}
+return b.String()
+```
+
+Avoid N+1 database queries — batch where possible. Use indexed lookups over linear scans.
+
+## Package Structure
+
+- Keep `main` packages thin — delegate to internal packages
+- Use `internal/` for packages not intended for external use
+- Avoid `util`, `common`, `helpers` package names — use domain-specific names
+- One package per directory; package name matches directory name
+
+## Documentation
+
+All exported symbols must have a doc comment starting with the symbol name:
+
+```go
+// UserService handles user lifecycle operations.
+type UserService struct { ... }
+
+// GetUser retrieves a user by their unique ID.
+// Returns ErrNotFound if the user does not exist.
+func (s *UserService) GetUser(ctx context.Context, id int64) (*User, error) { ... }
+```
+
+Complex unexported functions benefit from comments explaining the "why", not just the "what".
