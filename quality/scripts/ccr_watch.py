@@ -2,23 +2,26 @@
 """Poll-friendly CCR run watcher.
 
 Reads a run's status.json and trace.jsonl and returns only the new deltas plus a
-compact human-readable progress summary. Intended for agents that launch
-`ccr_run.py --detach` and then poll for meaningful updates.
+compact human-readable progress summary. Supports quiet text mode, cursor files,
+and follow mode for Monitor/background streaming.
 
 Examples:
     python3 ccr_watch.py --status-file /tmp/ccr/<run>/status.json --trace-file /tmp/ccr/<run>/trace.jsonl
-    python3 ccr_watch.py --status-file ... --trace-file ... --since-seq 12 --wait-seconds 15 --emit-heartbeat
+    python3 ccr_watch.py --status-file ... --trace-file ... --cursor-file /tmp/ccr/<run>/watch_cursor.json --format text --quiet-unchanged --follow --wait-seconds 15 --emit-heartbeat
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import signal
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
+
+
+_CURSOR_CONTRACT_VERSION = "ccr.watch_cursor.v1"
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -31,6 +34,13 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}")
+    tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp_path, path)
 
 
 def _is_process_alive(pid: int | None) -> bool:
@@ -157,6 +167,146 @@ def _render_event(event: dict[str, Any]) -> str:
     return f"[{stage}] {message}{suffix}"
 
 
+def _compact_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(artifacts, dict):
+        return {}
+    keys = (
+        "status_file",
+        "trace_file",
+        "summary_file",
+        "report_file",
+        "reviewers_file",
+        "candidates_file",
+        "verified_findings_file",
+    )
+    return {
+        key: artifacts[key]
+        for key in keys
+        if key in artifacts and artifacts[key]
+    }
+
+
+def _compact_progress(progress: dict[str, Any], *, verification: bool = False) -> dict[str, Any]:
+    if not isinstance(progress, dict):
+        return {}
+    if verification:
+        keys = (
+            "planned_batches",
+            "running_batches",
+            "completed_batches",
+            "succeeded_batches",
+            "failed_batches",
+            "workers",
+            "timeout_sec",
+            "estimated_max_duration_sec",
+        )
+    else:
+        keys = (
+            "planned",
+            "running",
+            "completed",
+            "succeeded",
+            "failed",
+            "workers",
+            "timeout_sec",
+            "estimated_max_duration_sec",
+        )
+    return {
+        key: progress[key]
+        for key in keys
+        if key in progress
+    }
+
+
+def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "seq": int(event.get("seq") or 0),
+        "ts": event.get("ts"),
+        "event": event.get("event"),
+        "stage": event.get("stage"),
+        "message": event.get("message"),
+    }
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    allowed_data_keys = {
+        "mode",
+        "target",
+        "project_dir",
+        "summary",
+        "source",
+        "has_requirements",
+        "changed_file_count",
+        "changed_lines",
+        "planned",
+        "running",
+        "completed",
+        "succeeded",
+        "failed",
+        "workers",
+        "pass_name",
+        "batch_id",
+        "provider",
+        "finding_count",
+        "verified_count",
+        "batch_count",
+        "status",
+        "full_matrix",
+        "duration_ms",
+        "report_file",
+    }
+    compact_data = {
+        key: value
+        for key, value in data.items()
+        if key in allowed_data_keys and value not in (None, "", [], {})
+    }
+    if compact_data:
+        compact["data"] = compact_data
+    return compact
+
+
+def _compact_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "contract_version": payload.get("contract_version"),
+        "run_id": payload.get("run_id"),
+        "state": payload.get("state"),
+        "done": payload.get("done"),
+        "changed": payload.get("changed"),
+        "pid": payload.get("pid"),
+        "revision": payload.get("revision"),
+        "since_seq": payload.get("since_seq"),
+        "last_seq": payload.get("last_seq"),
+        "current_stage": payload.get("current_stage"),
+        "reviewers": _compact_progress(payload.get("reviewers", {}), verification=False),
+        "verification": _compact_progress(payload.get("verification", {}), verification=True),
+        "summary": payload.get("summary", {}),
+        "artifacts": _compact_artifacts(payload.get("artifacts", {})),
+        "new_events": [_compact_event(event) for event in payload.get("new_events", [])],
+        "display_lines": payload.get("display_lines", []),
+        "next_poll_sec": payload.get("next_poll_sec"),
+    }
+
+
+def _load_cursor(cursor_file: Path | None) -> dict[str, Any]:
+    if cursor_file is None:
+        return {}
+    payload = _read_json(cursor_file)
+    return payload if payload else {}
+
+
+def _write_cursor(cursor_file: Path | None, payload: dict[str, Any]) -> None:
+    if cursor_file is None:
+        return
+    cursor_payload = {
+        "contract_version": _CURSOR_CONTRACT_VERSION,
+        "run_id": payload.get("run_id"),
+        "last_seq": int(payload.get("last_seq") or 0),
+        "revision": int(payload.get("revision") or 0),
+        "state": payload.get("state"),
+        "done": bool(payload.get("done")),
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    _write_json_atomic(cursor_file, cursor_payload)
+
+
 def watch_run(
     *,
     status_file: Path,
@@ -183,7 +333,7 @@ def watch_run(
             done = state in {"completed", "failed"}
             changed = bool(events)
             if changed or done or time.monotonic() >= deadline:
-                display_lines = []
+                display_lines: list[str] = []
                 if emit_heartbeat or changed or done:
                     display_lines.extend(_summarize_status(status))
                 for event in events:
@@ -266,6 +416,31 @@ def watch_run(
     }
 
 
+def _render_payload(
+    payload: dict[str, Any],
+    *,
+    output_format: str,
+    quiet_unchanged: bool,
+    cursor_before: dict[str, Any] | None = None,
+) -> str:
+    previous_last_seq = int((cursor_before or {}).get("last_seq") or 0)
+    previous_done = bool((cursor_before or {}).get("done"))
+    current_last_seq = int(payload.get("last_seq") or 0)
+    already_consumed_done = previous_done and current_last_seq <= previous_last_seq
+
+    if quiet_unchanged and not payload.get("changed") and (not payload.get("done") or already_consumed_done):
+        return ""
+
+    if output_format == "text":
+        lines = payload.get("display_lines") if isinstance(payload.get("display_lines"), list) else []
+        return "\n".join(str(line) for line in lines if str(line).strip())
+
+    if output_format == "compact-json":
+        return json.dumps(_compact_payload(payload), indent=2)
+
+    return json.dumps(payload, indent=2)
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ccr-watch",
@@ -273,26 +448,54 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--status-file", required=True, help="Path to CCR status.json.")
     parser.add_argument("--trace-file", default=None, help="Optional path to CCR trace.jsonl. Auto-detected from status.json when omitted.")
-    parser.add_argument("--since-seq", type=int, default=0, help="Only return trace events with seq > since-seq.")
+    parser.add_argument("--since-seq", type=int, default=None, help="Only return trace events with seq > since-seq. If omitted, --cursor-file is used when present.")
+    parser.add_argument("--cursor-file", default=None, help="Optional file that stores the last consumed trace seq for quiet repeated polling.")
     parser.add_argument("--pid", type=int, default=None, help="Optional detached harness pid. Used when status.json is not ready yet.")
     parser.add_argument("--wait-seconds", type=float, default=0, help="Wait up to this many seconds for a status change or new trace event.")
     parser.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval while waiting (default: 1.0s).")
-    parser.add_argument("--emit-heartbeat", action="store_true", help="Always include a snapshot summary line even when there are no new events.")
+    parser.add_argument("--emit-heartbeat", action="store_true", help="Include a snapshot summary line when there are no new events.")
+    parser.add_argument("--format", choices=["compact-json", "json", "text"], default="compact-json", help="Output format (default: compact-json).")
+    parser.add_argument("--quiet-unchanged", action="store_true", help="Print nothing when there is no new progress, including already-consumed terminal states via --cursor-file.")
+    parser.add_argument("--follow", action="store_true", help="Keep polling until the run finishes, emitting deltas as they arrive.")
     return parser
 
 
 def main() -> None:
     args = _build_arg_parser().parse_args()
-    payload = watch_run(
-        status_file=Path(args.status_file).expanduser().resolve(),
-        trace_file=Path(args.trace_file).expanduser().resolve() if args.trace_file else None,
-        since_seq=args.since_seq,
-        pid=args.pid,
-        wait_seconds=args.wait_seconds,
-        poll_interval=args.poll_interval,
-        emit_heartbeat=args.emit_heartbeat,
-    )
-    print(json.dumps(payload, indent=2))
+    status_file = Path(args.status_file).expanduser().resolve()
+    trace_file = Path(args.trace_file).expanduser().resolve() if args.trace_file else None
+    cursor_file = Path(args.cursor_file).expanduser().resolve() if args.cursor_file else None
+
+    cursor_before = _load_cursor(cursor_file)
+    current_since = args.since_seq if args.since_seq is not None else int(cursor_before.get("last_seq") or 0)
+
+    while True:
+        payload = watch_run(
+            status_file=status_file,
+            trace_file=trace_file,
+            since_seq=current_since,
+            pid=args.pid,
+            wait_seconds=args.wait_seconds,
+            poll_interval=args.poll_interval,
+            emit_heartbeat=args.emit_heartbeat,
+        )
+        _write_cursor(cursor_file, payload)
+        rendered = _render_payload(
+            payload,
+            output_format=args.format,
+            quiet_unchanged=args.quiet_unchanged,
+            cursor_before=cursor_before,
+        )
+        if rendered:
+            print(rendered)
+            sys.stdout.flush()
+
+        current_since = int(payload.get("last_seq") or current_since)
+        cursor_before = _load_cursor(cursor_file)
+        if not args.follow or payload.get("done"):
+            break
+        if args.wait_seconds <= 0:
+            time.sleep(max(float(payload.get("next_poll_sec") or 1), args.poll_interval, 0.1))
 
 
 if __name__ == "__main__":

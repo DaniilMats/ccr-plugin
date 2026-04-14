@@ -54,6 +54,7 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
         "status_file": str(run_dir / "status.json"),
         "trace_file": str(run_dir / "trace.jsonl"),
         "summary_file": str(run_dir / "run_summary.json"),
+        "watch_cursor_file": str(run_dir / "watch_cursor.json"),
         "harness_stdout_file": str(logs_dir / "harness.stdout.txt"),
         "harness_stderr_file": str(logs_dir / "harness.stderr.txt"),
         "diff_file": str(run_dir / "review_artifact.txt"),

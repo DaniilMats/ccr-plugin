@@ -72,6 +72,7 @@ class TestCCRRun(unittest.TestCase):
             self.assertTrue(Path(manifest["status_file"]).is_file())
             self.assertTrue(Path(manifest["trace_file"]).is_file())
             self.assertTrue(Path(manifest["summary_file"]).is_file())
+            self.assertTrue(str(manifest["watch_cursor_file"]).endswith("watch_cursor.json"))
             self.assertTrue(str(manifest["harness_stdout_file"]).endswith("harness.stdout.txt"))
             self.assertTrue(str(manifest["harness_stderr_file"]).endswith("harness.stderr.txt"))
             self.assertEqual(
@@ -133,7 +134,7 @@ class TestCCRRun(unittest.TestCase):
             self.assertTrue(Path(launch["harness_stdout_file"]).is_file())
             self.assertTrue(Path(launch["harness_stderr_file"]).is_file())
 
-            last_seq = 0
+            cursor_file = Path(launch["watch_cursor_file"])
             watch_payload = None
             all_display_lines: list[str] = []
             for _ in range(10):
@@ -147,8 +148,8 @@ class TestCCRRun(unittest.TestCase):
                         launch["trace_file"],
                         "--pid",
                         str(launch["pid"]),
-                        "--since-seq",
-                        str(last_seq),
+                        "--cursor-file",
+                        str(cursor_file),
                         "--wait-seconds",
                         "2",
                         "--emit-heartbeat",
@@ -159,8 +160,6 @@ class TestCCRRun(unittest.TestCase):
                 )
                 watch_payload = json.loads(watch_result.stdout)
                 self.assertEqual(watch_payload["contract_version"], "ccr.watch_result.v1")
-                self.assertGreaterEqual(watch_payload["last_seq"], last_seq)
-                last_seq = watch_payload["last_seq"]
                 all_display_lines.extend(watch_payload["display_lines"])
                 if watch_payload["done"]:
                     break
@@ -177,17 +176,41 @@ class TestCCRRun(unittest.TestCase):
                     launch["status_file"],
                     "--trace-file",
                     launch["trace_file"],
-                    "--since-seq",
-                    str(last_seq),
+                    "--cursor-file",
+                    str(cursor_file),
+                    "--quiet-unchanged",
                 ],
                 capture_output=True,
                 text=True,
                 check=True,
             )
-            final_payload = json.loads(final_watch.stdout)
-            self.assertEqual(final_payload["new_events"], [])
-            self.assertFalse(final_payload["changed"])
-            self.assertTrue(final_payload["done"])
+            self.assertEqual(final_watch.stdout.strip(), "")
+
+            follow_text = subprocess.run(
+                [
+                    "python3",
+                    str(self.watch_script),
+                    "--status-file",
+                    launch["status_file"],
+                    "--trace-file",
+                    launch["trace_file"],
+                    "--pid",
+                    str(launch["pid"]),
+                    "--cursor-file",
+                    str(cursor_file),
+                    "--format",
+                    "text",
+                    "--follow",
+                    "--wait-seconds",
+                    "1",
+                    "--quiet-unchanged",
+                    "--emit-heartbeat",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self.assertEqual(follow_text.stdout.strip(), "")
 
             summary = json.loads(Path(launch["summary_file"]).read_text(encoding="utf-8"))
             status = json.loads(Path(launch["status_file"]).read_text(encoding="utf-8"))

@@ -20,3 +20,7 @@ Current schemas:
 - `verification_batch.schema.json`
 - `verification_result.schema.json`
 - `posting_manifest.schema.json`
+
+Notes:
+- `watch_cursor.json` is a run-scoped watcher cursor/state file used by `quality/scripts/ccr_watch.py` to suppress already-consumed progress updates during repeated polling or `--follow` sessions.
+- The cursor file is intentionally lightweight adapter state and is not treated as a harness contract schema.

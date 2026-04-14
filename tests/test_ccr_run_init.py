@@ -39,6 +39,7 @@ class TestCCRRunInit(unittest.TestCase):
             self.assertTrue(str(manifest["status_file"]).endswith("status.json"))
             self.assertTrue(str(manifest["trace_file"]).endswith("trace.jsonl"))
             self.assertTrue(str(manifest["summary_file"]).endswith("run_summary.json"))
+            self.assertTrue(str(manifest["watch_cursor_file"]).endswith("watch_cursor.json"))
             self.assertTrue(str(manifest["harness_stdout_file"]).endswith("harness.stdout.txt"))
             self.assertTrue(str(manifest["harness_stderr_file"]).endswith("harness.stderr.txt"))
             self.assertEqual(manifest["contract_versions"]["run_status"], "ccr.run_status.v1")

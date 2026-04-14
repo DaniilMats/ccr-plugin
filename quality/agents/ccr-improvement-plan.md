@@ -21,6 +21,7 @@ As of 2026-04-14:
 - Phase 1 is complete: deterministic harness entrypoint at `quality/scripts/ccr_run.py`
 - Phase 1.1 is complete: live stderr progress, `status.json`, `trace.jsonl`, `run_summary.json`, and configurable parallelism/timeout budgeting for the harness
 - Phase 1.2 is complete: detached/background harness launch plus polling via `quality/scripts/ccr_watch.py`
+- Phase 1.3 is complete: compact/quiet watcher output, cursor-managed progress polling, `/loop`/scheduled-task limits documented, and Monitor-first live UX
 
 ---
 

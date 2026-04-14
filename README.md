@@ -88,8 +88,8 @@ Before larger refactors, run the deterministic local safety harness:
 This runs:
 - `py_compile` on the CCR Python entrypoints
 - `python3 -m unittest discover -s tests -v`
-- smoke invocations for `ccr_run_init.py`, `ccr_routing.py`, `repomap.py`, `review_context.py`, the deterministic `ccr_run.py` harness in `--dry-run` mode, and the detached `ccr_run.py --detach` + `ccr_watch.py` polling flow
-- validation that `ccr_run.py` writes a live `status.json`, append-only `trace.jsonl`, final `run_summary.json`, and a background-launch `run_launch` payload
+- smoke invocations for `ccr_run_init.py`, `ccr_routing.py`, `repomap.py`, `review_context.py`, the deterministic `ccr_run.py` harness in `--dry-run` mode, and the detached `ccr_run.py --detach` + `ccr_watch.py` watch flow
+- validation that `ccr_run.py` writes a live `status.json`, append-only `trace.jsonl`, final `run_summary.json`, a run-scoped `watch_cursor.json`, and a background-launch `run_launch` payload
 
 You can also run the unit tests directly:
 
@@ -125,8 +125,8 @@ ccr-plugin/
 │   │   └── v1/                     # versioned JSON contract schemas for CCR runtime artifacts
 │   └── scripts/
 │       ├── ccr_run_init.py         # isolated run workspace + manifest initializer
-│       ├── ccr_run.py              # deterministic Phase 1.2 harness with sync and detached execution modes
-│       ├── ccr_watch.py            # polling-friendly adapter over status.json + trace.jsonl
+│       ├── ccr_run.py              # deterministic Phase 1.3 harness with sync and detached execution modes
+│       ├── ccr_watch.py            # compact/quiet watcher over status.json + trace.jsonl with cursor + follow modes
 │       ├── ccr_routing.py          # adaptive fanout planner (4-14 passes)
 │       ├── repomap.py              # lightweight focused repo map helper for review_context.py
 │       └── llm-proxy/
@@ -169,16 +169,17 @@ All paths inside `quality/agents/ccr.md` use `${CLAUDE_PLUGIN_ROOT}` so the plug
 1. Never post comments without explicit user approval in MR mode.
 2. Always initialize an isolated run workspace first, then run adaptive fanout planning. Logic Pass 1 + Pass 2 + Pass 3 are mandatory; total planned fanout stays within 4-14 passes.
 3. Phase 1 orchestration now runs through the deterministic `quality/scripts/ccr_run.py` harness, which owns artifact prep, routing, reviewer subprocess execution, consolidation, verification, and report generation.
-4. The harness now supports detached/background execution and writes machine-readable observability artifacts: `status.json`, `trace.jsonl`, `run_summary.json`, plus launch metadata for polling.
-5. `quality/scripts/ccr_watch.py` is the preferred UX layer for polling progress updates during long reviews.
-6. Candidate findings must pass verification before being shown.
-7. Local diff / file / package modes are **report-only** — no posting target exists.
+4. The harness now supports detached/background execution and writes machine-readable observability artifacts: `status.json`, `trace.jsonl`, `run_summary.json`, plus launch metadata for watching.
+5. `quality/scripts/ccr_watch.py` now supports compact JSON, quiet text mode, cursor files, and follow mode so progress updates do not flood the conversation.
+6. In Claude Code, `Monitor` is the preferred live UX layer for long reviews; session-scoped scheduled tasks (`/loop` / `CronCreate`) remain a coarse 1-minute fallback.
+7. Candidate findings must pass verification before being shown.
+8. Local diff / file / package modes are **report-only** — no posting target exists.
 
 See `quality/agents/ccr.md` for the full workflow specification.
 
 ## Status
 
-Phase 1.2 is now in place: CCR has an isolated run-workspace initializer (`ccr_run_init.py`), a deterministic orchestration harness (`ccr_run.py`) with synchronous and detached execution modes, live observability artifacts (`status.json`, `trace.jsonl`, `run_summary.json`), a polling adapter (`ccr_watch.py`), versioned contract schemas under `quality/contracts/v1/`, stdlib unit tests under `tests/`, golden fixtures for routing/context behavior, and a deterministic local smoke harness at `./scripts/smoke.sh`. Posting still remains a separate Phase 2 concern, and broader eval suites are still future work.
+Phase 1.3 is complete: CCR has an isolated run-workspace initializer (`ccr_run_init.py`), a deterministic orchestration harness (`ccr_run.py`) with synchronous and detached execution modes, live observability artifacts (`status.json`, `trace.jsonl`, `run_summary.json`, `watch_cursor.json`), a compact watcher (`ccr_watch.py`) with quiet/follow modes, versioned contract schemas under `quality/contracts/v1/`, stdlib unit tests under `tests/`, golden fixtures for routing/context behavior, and a deterministic local smoke harness at `./scripts/smoke.sh`. Posting still remains a separate Phase 2 concern, and broader eval suites are still future work.
 
 ## License
 

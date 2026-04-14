@@ -79,7 +79,7 @@ from pathlib import Path
 launch = json.loads(Path(sys.argv[1]).read_text())
 root = Path(sys.argv[2])
 assert launch["contract_version"] == "ccr.run_launch.v1"
-last_seq = 0
+cursor = Path(launch["watch_cursor_file"])
 payload = None
 for _ in range(10):
     result = subprocess.run([
@@ -88,18 +88,27 @@ for _ in range(10):
         "--status-file", launch["status_file"],
         "--trace-file", launch["trace_file"],
         "--pid", str(launch["pid"]),
-        "--since-seq", str(last_seq),
+        "--cursor-file", str(cursor),
         "--wait-seconds", "2",
         "--emit-heartbeat",
     ], capture_output=True, text=True, check=True)
     payload = json.loads(result.stdout)
-    last_seq = payload["last_seq"]
     if payload["done"]:
         break
 assert payload is not None
 assert payload["contract_version"] == "ccr.watch_result.v1"
 assert payload["done"] is True
 assert payload["state"] == "completed"
+text_result = subprocess.run([
+    "python3",
+    str(root / "quality/scripts/ccr_watch.py"),
+    "--status-file", launch["status_file"],
+    "--trace-file", launch["trace_file"],
+    "--cursor-file", str(cursor),
+    "--format", "text",
+    "--quiet-unchanged",
+], capture_output=True, text=True, check=True)
+assert text_result.stdout.strip() == ""
 summary = json.loads(Path(launch["summary_file"]).read_text())
 status = json.loads(Path(launch["status_file"]).read_text())
 assert summary["contract_version"] == "ccr.run_summary.v1"
