@@ -10,6 +10,7 @@ cd "$ROOT_DIR"
 echo "[smoke] py_compile"
 python3 -m py_compile \
   quality/scripts/ccr_run_init.py \
+  quality/scripts/ccr_run.py \
   quality/scripts/repomap.py \
   quality/scripts/ccr_routing.py \
   quality/scripts/llm-proxy/code_review.py \
@@ -44,5 +45,12 @@ python3 quality/scripts/llm-proxy/review_context.py \
   --project-dir tests/fixtures/go_repo \
   --artifact-file tests/fixtures/go_repo/review_artifact.txt \
   --output-file "$TMP_DIR/review_context.md" > /dev/null
+
+echo "[smoke] deterministic harness"
+python3 quality/scripts/ccr_run.py \
+  package:internal/auth \
+  --project-dir tests/fixtures/go_repo \
+  --dry-run \
+  --base-dir "$TMP_DIR/phase1" > "$TMP_DIR/ccr_run_summary.json"
 
 echo "[smoke] ok"

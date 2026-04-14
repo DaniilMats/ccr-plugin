@@ -36,9 +36,11 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
     run_dir = base_dir / run_id
     logs_dir = run_dir / "logs"
     verify_batch_dir = run_dir / "verify_batches"
+    reviewer_results_dir = run_dir / "reviewers"
+    verifier_results_dir = run_dir / "verifier_results"
     comments_dir = run_dir / "comment_payloads"
 
-    for path in (run_dir, logs_dir, verify_batch_dir, comments_dir):
+    for path in (run_dir, logs_dir, verify_batch_dir, reviewer_results_dir, verifier_results_dir, comments_dir):
         path.mkdir(parents=True, exist_ok=True)
 
     manifest = {
@@ -47,9 +49,11 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
         "created_at": _utc_now(),
         "base_dir": str(base_dir),
         "run_dir": str(run_dir),
+        "logs_dir": str(logs_dir),
         "manifest_file": str(run_dir / "run_manifest.json"),
         "diff_file": str(run_dir / "review_artifact.txt"),
         "requirements_file": str(run_dir / "requirements.txt"),
+        "mr_metadata_file": str(run_dir / "mr_metadata.json"),
         "route_input_file": str(run_dir / "route_input.json"),
         "route_plan_file": str(run_dir / "route_plan.json"),
         "route_helper_err_file": str(logs_dir / "route_helper.stderr.txt"),
@@ -59,6 +63,11 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
         "requirements_prompt_pass1_file": str(run_dir / "requirements_pass1.prompt.txt"),
         "requirements_prompt_pass2_file": str(run_dir / "requirements_pass2.prompt.txt"),
         "verify_batch_dir": str(verify_batch_dir),
+        "reviewer_results_dir": str(reviewer_results_dir),
+        "verifier_results_dir": str(verifier_results_dir),
+        "reviewers_file": str(run_dir / "reviewers.json"),
+        "candidates_file": str(run_dir / "candidates.json"),
+        "verified_findings_file": str(run_dir / "verified_findings.json"),
         "comments_dir": str(comments_dir),
         "report_file": str(run_dir / "report.md"),
         "contract_versions": {
@@ -66,6 +75,7 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
             "route_plan": "ccr.route_plan.v1",
             "static_analysis": "ccr.static_analysis.v1",
             "reviewer_result": "ccr.reviewer_result.v1",
+            "consolidated_candidate": "ccr.consolidated_candidate.v1",
             "verification_batch": "ccr.verification_batch.v1",
             "verification_result": "ccr.verification_result.v1",
             "posting_manifest": "ccr.posting_manifest.v1",

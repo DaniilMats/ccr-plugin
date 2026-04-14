@@ -13,6 +13,13 @@ Evolve CCR from a **prompt-orchestrated review workflow** into a **production-gr
 
 This plan is based on the current repository state in `~/ccr-plugin` and on production patterns commonly used in agent review systems: **generator/reviewer separation, deterministic verifiers, HITL approval gates, structured traces, and continuous eval loops**.
 
+## Progress note
+
+As of 2026-04-14:
+- Phase 0 is complete: isolated run workspaces + versioned contracts
+- Phase 0.5 is complete: deterministic tests/fixtures + local smoke harness
+- Phase 1 now has an implemented deterministic harness entrypoint at `quality/scripts/ccr_run.py`
+
 ---
 
 ## Current CCR architecture snapshot

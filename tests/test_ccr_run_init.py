@@ -32,6 +32,10 @@ class TestCCRRunInit(unittest.TestCase):
             self.assertTrue(Path(manifest["manifest_file"]).is_file())
             self.assertEqual(manifest["contract_versions"]["route_plan"], "ccr.route_plan.v1")
             self.assertEqual(manifest["contract_versions"]["static_analysis"], "ccr.static_analysis.v1")
+            self.assertEqual(manifest["contract_versions"]["consolidated_candidate"], "ccr.consolidated_candidate.v1")
+            self.assertTrue(Path(manifest["logs_dir"]).is_dir())
+            self.assertTrue(Path(manifest["reviewer_results_dir"]).is_dir())
+            self.assertTrue(Path(manifest["verifier_results_dir"]).is_dir())
 
             is_valid, violations = self.validator.validate_response(
                 json.dumps(manifest), str(self.schema)

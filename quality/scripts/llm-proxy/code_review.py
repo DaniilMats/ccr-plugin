@@ -600,13 +600,31 @@ def main() -> None:
         review_context_text=review_context_text,
     )
 
+    if args.dry_run:
+        review_output = {
+            "contract_version": "ccr.reviewer_result.v1",
+            "findings": [],
+            "summary": "[dry-run] Review skipped.",
+            "raw_response": "[dry-run]",
+        }
+        out_json = json.dumps(review_output, indent=2)
+        print(out_json)
+        if args.output_file:
+            try:
+                os.makedirs(os.path.dirname(os.path.abspath(args.output_file)), exist_ok=True)
+                with open(args.output_file, "w", encoding="utf-8") as f:
+                    f.write(out_json)
+            except OSError as exc:
+                print("WARNING: Could not write output file: {}".format(exc), file=sys.stderr)
+        sys.exit(0)
+
     # Step 6: Invoke llm-proxy
     schema_path = os.path.join(_HERE, "schemas", "code_review_response.schema.json")
 
     proxy_result = run_proxy(
         prompt=prompt,
         provider=args.provider,
-        dry_run=args.dry_run,
+        dry_run=False,
         timeout=args.timeout,
         response_schema=schema_path,
         output_file=None,  # We handle output ourselves below
