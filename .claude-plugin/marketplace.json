@@ -1,0 +1,13 @@
+{
+  "name": "ccr-marketplace",
+  "owner": {
+    "name": "Daniil Matsuka"
+  },
+  "plugins": [
+    {
+      "name": "ccr",
+      "source": ".",
+      "description": "Adaptive multi-model code reviewer for GitLab MRs, local diffs, Go files, and Go packages."
+    }
+  ]
+}
