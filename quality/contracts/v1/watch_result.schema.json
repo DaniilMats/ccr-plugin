@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRWatchResultV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contract_version",
+    "run_id",
+    "state",
+    "done",
+    "changed",
+    "since_seq",
+    "last_seq",
+    "display_lines",
+    "new_events"
+  ],
+  "properties": {
+    "contract_version": { "const": "ccr.watch_result.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["pending", "running", "completed", "failed", "unknown"] },
+    "done": { "type": "boolean" },
+    "changed": { "type": "boolean" },
+    "pid": { "type": ["integer", "null"], "minimum": 1 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "since_seq": { "type": "integer", "minimum": 0 },
+    "last_seq": { "type": "integer", "minimum": 0 },
+    "current_stage": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "status": { "type": "string" },
+        "index": { "type": "integer", "minimum": 1 },
+        "total": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "reviewers": { "type": "object", "additionalProperties": true },
+    "verification": { "type": "object", "additionalProperties": true },
+    "summary": { "type": "object", "additionalProperties": true },
+    "artifacts": { "type": "object", "additionalProperties": true },
+    "new_events": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "display_lines": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "next_poll_sec": { "type": ["integer", "number"], "minimum": 0 }
+  }
+}

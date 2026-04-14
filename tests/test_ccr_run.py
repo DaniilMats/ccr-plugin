@@ -15,6 +15,7 @@ class TestCCRRun(unittest.TestCase):
         cls.module = load_module("ccr_run_module", "quality/scripts/ccr_run.py")
         cls.fixture_repo = FIXTURES_DIR / "go_repo"
         cls.script = REPO_ROOT / "quality" / "scripts" / "ccr_run.py"
+        cls.watch_script = REPO_ROOT / "quality" / "scripts" / "ccr_watch.py"
 
     def test_detect_review_target_normalizes_raw_go_file(self) -> None:
         file_path = self.fixture_repo / "internal" / "auth" / "jwt.go"
@@ -71,6 +72,8 @@ class TestCCRRun(unittest.TestCase):
             self.assertTrue(Path(manifest["status_file"]).is_file())
             self.assertTrue(Path(manifest["trace_file"]).is_file())
             self.assertTrue(Path(manifest["summary_file"]).is_file())
+            self.assertTrue(str(manifest["harness_stdout_file"]).endswith("harness.stdout.txt"))
+            self.assertTrue(str(manifest["harness_stderr_file"]).endswith("harness.stderr.txt"))
             self.assertEqual(
                 Path(manifest["report_file"]).read_text(encoding="utf-8").strip(),
                 "Проверенных замечаний не найдено.",
@@ -93,6 +96,8 @@ class TestCCRRun(unittest.TestCase):
             self.assertEqual(reviewers["summary"]["failed_passes"], 0)
             self.assertEqual(verified["summary"]["verified_count"], 0)
             self.assertEqual(status["state"], "completed")
+            self.assertGreaterEqual(status["revision"], 1)
+            self.assertGreaterEqual(status["event_seq"], 1)
             self.assertEqual(status["summary"]["verified_finding_count"], 0)
             self.assertEqual(status["reviewers"]["planned"], 12)
             self.assertEqual(status["reviewers"]["workers"], 12)
@@ -101,6 +106,96 @@ class TestCCRRun(unittest.TestCase):
             self.assertEqual(written_summary["run_id"], summary["run_id"])
             self.assertEqual(written_summary["duration_ms"], summary["duration_ms"])
             self.assertTrue({"run_initialized", "route_plan_ready", "reviewers_started", "run_completed"}.issubset(trace_events))
+
+    def test_detach_launch_and_watch_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            launch_result = subprocess.run(
+                [
+                    "python3",
+                    str(self.script),
+                    "package:internal/auth",
+                    "--project-dir",
+                    str(self.fixture_repo),
+                    "--dry-run",
+                    "--base-dir",
+                    tmp,
+                    "--detach",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            launch = json.loads(launch_result.stdout)
+            self.assertEqual(launch["contract_version"], "ccr.run_launch.v1")
+            self.assertEqual(launch["mode"], "local")
+            self.assertFalse(launch["done"])
+            self.assertTrue(Path(launch["manifest_file"]).is_file())
+            self.assertTrue(Path(launch["harness_stdout_file"]).is_file())
+            self.assertTrue(Path(launch["harness_stderr_file"]).is_file())
+
+            last_seq = 0
+            watch_payload = None
+            all_display_lines: list[str] = []
+            for _ in range(10):
+                watch_result = subprocess.run(
+                    [
+                        "python3",
+                        str(self.watch_script),
+                        "--status-file",
+                        launch["status_file"],
+                        "--trace-file",
+                        launch["trace_file"],
+                        "--pid",
+                        str(launch["pid"]),
+                        "--since-seq",
+                        str(last_seq),
+                        "--wait-seconds",
+                        "2",
+                        "--emit-heartbeat",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                watch_payload = json.loads(watch_result.stdout)
+                self.assertEqual(watch_payload["contract_version"], "ccr.watch_result.v1")
+                self.assertGreaterEqual(watch_payload["last_seq"], last_seq)
+                last_seq = watch_payload["last_seq"]
+                all_display_lines.extend(watch_payload["display_lines"])
+                if watch_payload["done"]:
+                    break
+            self.assertIsNotNone(watch_payload)
+            self.assertTrue(watch_payload["done"], watch_payload)
+            self.assertEqual(watch_payload["state"], "completed")
+            self.assertTrue(any("Reviewers:" in line for line in all_display_lines))
+
+            final_watch = subprocess.run(
+                [
+                    "python3",
+                    str(self.watch_script),
+                    "--status-file",
+                    launch["status_file"],
+                    "--trace-file",
+                    launch["trace_file"],
+                    "--since-seq",
+                    str(last_seq),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            final_payload = json.loads(final_watch.stdout)
+            self.assertEqual(final_payload["new_events"], [])
+            self.assertFalse(final_payload["changed"])
+            self.assertTrue(final_payload["done"])
+
+            summary = json.loads(Path(launch["summary_file"]).read_text(encoding="utf-8"))
+            status = json.loads(Path(launch["status_file"]).read_text(encoding="utf-8"))
+            self.assertEqual(summary["contract_version"], "ccr.run_summary.v1")
+            self.assertEqual(summary["run_id"], launch["run_id"])
+            self.assertTrue(summary["detached"])
+            self.assertEqual(status["state"], "completed")
+            self.assertTrue(status["detached"])
 
 
 if __name__ == "__main__":

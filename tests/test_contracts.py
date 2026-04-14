@@ -29,6 +29,8 @@ class TestContracts(unittest.TestCase):
             "route_plan.schema.json",
             "run_status.schema.json",
             "run_summary.schema.json",
+            "run_launch.schema.json",
+            "watch_result.schema.json",
             "static_analysis.schema.json",
             "reviewer_result.schema.json",
             "consolidated_candidate.schema.json",
@@ -54,8 +56,14 @@ class TestContracts(unittest.TestCase):
         payload = {
             "contract_version": "ccr.run_status.v1",
             "run_id": "20260414T220000Z-1234-abcd1234",
+            "pid": 12345,
+            "detached": True,
+            "revision": 7,
+            "event_seq": 5,
             "state": "running",
             "started_at": "2026-04-14T22:00:00Z",
+            "updated_at": "2026-04-14T22:00:07Z",
+            "heartbeat_at": "2026-04-14T22:00:07Z",
             "finished_at": None,
             "duration_ms": None,
             "current_stage": {
@@ -64,7 +72,9 @@ class TestContracts(unittest.TestCase):
                 "message": "Running reviewer passes",
                 "started_at": "2026-04-14T22:01:00Z",
                 "ended_at": None,
-                "duration_ms": None
+                "duration_ms": None,
+                "index": 7,
+                "total": 10
             },
             "stages": {
                 "routing": {
@@ -76,6 +86,7 @@ class TestContracts(unittest.TestCase):
                 "planned": 12,
                 "workers": 12,
                 "timeout_sec": 600,
+                "running": 8,
                 "completed": 4,
                 "succeeded": 4,
                 "failed": 0,
@@ -90,6 +101,7 @@ class TestContracts(unittest.TestCase):
                 "planned_batches": 0,
                 "workers": 0,
                 "timeout_sec": 300,
+                "running_batches": 0,
                 "completed_batches": 0,
                 "succeeded_batches": 0,
                 "failed_batches": 0,
@@ -97,7 +109,9 @@ class TestContracts(unittest.TestCase):
                 "batches": {}
             },
             "artifacts": {
-                "run_dir": "/tmp/ccr/run"
+                "run_dir": "/tmp/ccr/run",
+                "trace_file": "/tmp/ccr/run/trace.jsonl",
+                "status_file": "/tmp/ccr/run/status.json"
             },
             "summary": {},
             "last_event": None,
@@ -117,6 +131,10 @@ class TestContracts(unittest.TestCase):
             "status_file": "/tmp/ccr/run/status.json",
             "trace_file": "/tmp/ccr/run/trace.jsonl",
             "summary_file": "/tmp/ccr/run/run_summary.json",
+            "harness_stdout_file": "/tmp/ccr/run/logs/harness.stdout.txt",
+            "harness_stderr_file": "/tmp/ccr/run/logs/harness.stderr.txt",
+            "pid": 12345,
+            "detached": True,
             "report_file": "/tmp/ccr/run/report.md",
             "reviewers_file": "/tmp/ccr/run/reviewers.json",
             "candidates_file": "/tmp/ccr/run/candidates.json",
@@ -131,6 +149,70 @@ class TestContracts(unittest.TestCase):
             "report_preview": ["Проверенных замечаний не найдено."]
         }
         self._assert_valid(payload, "run_summary.schema.json")
+
+    def test_run_launch_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.run_launch.v1",
+            "run_id": "20260414T220000Z-1234-abcd1234",
+            "pid": 12345,
+            "mode": "mr",
+            "target": "https://gitlab.com/group/project/-/merge_requests/1",
+            "project_dir": "/tmp/repo",
+            "run_dir": "/tmp/ccr/run",
+            "manifest_file": "/tmp/ccr/run/run_manifest.json",
+            "status_file": "/tmp/ccr/run/status.json",
+            "trace_file": "/tmp/ccr/run/trace.jsonl",
+            "summary_file": "/tmp/ccr/run/run_summary.json",
+            "report_file": "/tmp/ccr/run/report.md",
+            "reviewers_file": "/tmp/ccr/run/reviewers.json",
+            "candidates_file": "/tmp/ccr/run/candidates.json",
+            "verified_findings_file": "/tmp/ccr/run/verified_findings.json",
+            "harness_stdout_file": "/tmp/ccr/run/logs/harness.stdout.txt",
+            "harness_stderr_file": "/tmp/ccr/run/logs/harness.stderr.txt",
+            "state": "launched",
+            "done": False,
+            "launched_at": "2026-04-14T22:00:00Z"
+        }
+        self._assert_valid(payload, "run_launch.schema.json")
+
+    def test_watch_result_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.watch_result.v1",
+            "run_id": "20260414T220000Z-1234-abcd1234",
+            "state": "running",
+            "done": False,
+            "changed": True,
+            "pid": 12345,
+            "revision": 4,
+            "since_seq": 2,
+            "last_seq": 4,
+            "current_stage": {
+                "name": "reviewers",
+                "status": "running",
+                "index": 7,
+                "total": 10
+            },
+            "reviewers": {
+                "planned": 14,
+                "completed": 4
+            },
+            "verification": {},
+            "summary": {},
+            "artifacts": {
+                "status_file": "/tmp/ccr/run/status.json"
+            },
+            "new_events": [
+                {
+                    "seq": 3,
+                    "event": "reviewer_completed"
+                }
+            ],
+            "display_lines": [
+                "Run 20260414T220000Z-1234-abcd1234: state=running, stage=[7/10] reviewers"
+            ],
+            "next_poll_sec": 10
+        }
+        self._assert_valid(payload, "watch_result.schema.json")
 
     def test_static_analysis_contract(self) -> None:
         payload = self.static_analysis.empty_result()

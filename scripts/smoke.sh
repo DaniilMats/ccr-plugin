@@ -11,6 +11,7 @@ echo "[smoke] py_compile"
 python3 -m py_compile \
   quality/scripts/ccr_run_init.py \
   quality/scripts/ccr_run.py \
+  quality/scripts/ccr_watch.py \
   quality/scripts/repomap.py \
   quality/scripts/ccr_routing.py \
   quality/scripts/llm-proxy/code_review.py \
@@ -62,6 +63,47 @@ assert summary["contract_version"] == "ccr.run_summary.v1"
 assert status["contract_version"] == "ccr.run_status.v1"
 assert status["state"] == "completed"
 assert Path(summary["trace_file"]).is_file()
+PY
+
+echo "[smoke] detached harness + watch"
+python3 quality/scripts/ccr_run.py \
+  package:internal/auth \
+  --project-dir tests/fixtures/go_repo \
+  --dry-run \
+  --base-dir "$TMP_DIR/phase12" \
+  --detach > "$TMP_DIR/ccr_run_launch.json"
+
+python3 - <<'PY' "$TMP_DIR/ccr_run_launch.json" "$ROOT_DIR"
+import json, subprocess, sys
+from pathlib import Path
+launch = json.loads(Path(sys.argv[1]).read_text())
+root = Path(sys.argv[2])
+assert launch["contract_version"] == "ccr.run_launch.v1"
+last_seq = 0
+payload = None
+for _ in range(10):
+    result = subprocess.run([
+        "python3",
+        str(root / "quality/scripts/ccr_watch.py"),
+        "--status-file", launch["status_file"],
+        "--trace-file", launch["trace_file"],
+        "--pid", str(launch["pid"]),
+        "--since-seq", str(last_seq),
+        "--wait-seconds", "2",
+        "--emit-heartbeat",
+    ], capture_output=True, text=True, check=True)
+    payload = json.loads(result.stdout)
+    last_seq = payload["last_seq"]
+    if payload["done"]:
+        break
+assert payload is not None
+assert payload["contract_version"] == "ccr.watch_result.v1"
+assert payload["done"] is True
+assert payload["state"] == "completed"
+summary = json.loads(Path(launch["summary_file"]).read_text())
+status = json.loads(Path(launch["status_file"]).read_text())
+assert summary["contract_version"] == "ccr.run_summary.v1"
+assert status["contract_version"] == "ccr.run_status.v1"
 PY
 
 echo "[smoke] ok"

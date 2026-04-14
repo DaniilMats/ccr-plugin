@@ -14,7 +14,7 @@ Runs CCR end-to-end for local scopes, artifact replays, and GitLab merge request
 Examples:
     python3 ccr_run.py uncommitted --dry-run
     python3 ccr_run.py package:internal/service --project-dir ~/src/my-repo --dry-run
-    python3 ccr_run.py https://gitlab.com/group/project/-/merge_requests/1234
+    python3 ccr_run.py https://gitlab.com/group/project/-/merge_requests/1234 --detach
     python3 ccr_run.py --artifact-file /tmp/review_artifact.txt --project-dir ~/src/my-repo --dry-run
 """
 from __future__ import annotations
@@ -227,6 +227,22 @@ def _format_milliseconds_short(total_ms: int | None) -> str:
     return _format_seconds_short(int(round(seconds)))
 
 
+_STAGE_SEQUENCE: tuple[str, ...] = (
+    "artifact_preparation",
+    "requirements",
+    "routing",
+    "review_context",
+    "static_analysis",
+    "shuffle_diff",
+    "reviewers",
+    "candidates",
+    "verification",
+    "report",
+)
+_STAGE_INDEX = {name: index + 1 for index, name in enumerate(_STAGE_SEQUENCE)}
+_STAGE_TOTAL = len(_STAGE_SEQUENCE)
+
+
 class RunObserver:
     def __init__(self, manifest: dict[str, Any]) -> None:
         self.run_id = manifest["run_id"]
@@ -236,11 +252,19 @@ class RunObserver:
         self._lock = threading.Lock()
         self._run_started_monotonic = time.monotonic()
         self._stage_started_monotonic: dict[str, float] = {}
+        self._event_seq = 0
+        self._revision = 0
         self._status: dict[str, Any] = {
             "contract_version": "ccr.run_status.v1",
             "run_id": self.run_id,
+            "pid": os.getpid(),
+            "detached": False,
+            "revision": 0,
+            "event_seq": 0,
             "state": "running",
             "started_at": _utc_now(),
+            "updated_at": None,
+            "heartbeat_at": None,
             "finished_at": None,
             "duration_ms": None,
             "current_stage": None,
@@ -251,6 +275,7 @@ class RunObserver:
                 "planned": 0,
                 "workers": 0,
                 "timeout_sec": None,
+                "running": 0,
                 "completed": 0,
                 "succeeded": 0,
                 "failed": 0,
@@ -261,6 +286,7 @@ class RunObserver:
                 "planned_batches": 0,
                 "workers": 0,
                 "timeout_sec": None,
+                "running_batches": 0,
                 "completed_batches": 0,
                 "succeeded_batches": 0,
                 "failed_batches": 0,
@@ -277,6 +303,8 @@ class RunObserver:
                 "reviewers_file": manifest["reviewers_file"],
                 "candidates_file": manifest["candidates_file"],
                 "verified_findings_file": manifest["verified_findings_file"],
+                "harness_stdout_file": manifest["harness_stdout_file"],
+                "harness_stderr_file": manifest["harness_stderr_file"],
             },
             "summary": {},
             "last_event": None,
@@ -288,8 +316,30 @@ class RunObserver:
         self.trace_file.write_text("", encoding="utf-8")
         self._write_status_locked()
 
+    def _stage_meta(self, stage: str | None) -> dict[str, Any]:
+        if stage is None or stage not in _STAGE_INDEX:
+            return {}
+        return {
+            "index": _STAGE_INDEX[stage],
+            "total": _STAGE_TOTAL,
+        }
+
+    def _stage_label(self, stage: str | None) -> str:
+        if stage is None:
+            return "run"
+        if stage not in _STAGE_INDEX:
+            return stage
+        meta = self._stage_meta(stage)
+        return f"{meta['index']}/{meta['total']} {stage}"
+
     def _write_status_locked(self) -> None:
-        self.status_file.write_text(json.dumps(self._status, indent=2) + "\n", encoding="utf-8")
+        now = _utc_now()
+        self._revision += 1
+        self._status["revision"] = self._revision
+        self._status["updated_at"] = now
+        self._status["heartbeat_at"] = now
+        self._status["event_seq"] = self._event_seq
+        _write_json(self.status_file, self._status)
 
     def _format_brief_data(self, data: dict[str, Any]) -> str:
         if not data:
@@ -306,6 +356,7 @@ class RunObserver:
             "changed_lines",
             "planned",
             "workers",
+            "running",
             "completed",
             "succeeded",
             "failed",
@@ -319,6 +370,7 @@ class RunObserver:
             "gosec",
             "context_status",
             "pass_name",
+            "batch_id",
             "provider",
             "status",
             "full_matrix",
@@ -328,24 +380,31 @@ class RunObserver:
             "report_file",
         )
         parts: list[str] = []
-        seen: set[str] = set()
         for key in preferred_keys:
             if key not in data:
                 continue
-            seen.add(key)
             value = data[key]
             if value in (None, "", [], {}):
                 continue
             display_value = value
             if key.endswith("_duration_sec") or key == "timeout_sec":
                 display_value = _format_seconds_short(int(value))
+            elif key == "estimated_max_duration_sec":
+                display_value = _format_seconds_short(int(value))
             elif key == "duration_ms":
                 display_value = _format_milliseconds_short(int(value))
             parts.append(f"{key}={display_value}")
         return " | " + ", ".join(parts) if parts else ""
 
+    def set_process_info(self, *, pid: int, detached: bool) -> None:
+        with self._lock:
+            self._status["pid"] = pid
+            self._status["detached"] = detached
+            self._write_status_locked()
+
     def event(self, event: str, message: str, *, stage: str | None = None, level: str = "info", **data: Any) -> None:
         payload = {
+            "seq": self._event_seq + 1,
             "ts": _utc_now(),
             "level": level,
             "event": event,
@@ -354,11 +413,13 @@ class RunObserver:
             "data": data,
         }
         with self._lock:
+            self._event_seq += 1
+            payload["seq"] = self._event_seq
             with self.trace_file.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
             self._status["last_event"] = payload
             self._write_status_locked()
-        stage_label = stage or "run"
+        stage_label = self._stage_label(stage)
         print(f"[CCR][{payload['ts']}][{stage_label}] {message}{self._format_brief_data(data)}", file=sys.stderr, flush=True)
 
     def set_target(self, *, mode: str, target: str, project_dir: str | None) -> None:
@@ -380,6 +441,7 @@ class RunObserver:
 
     def start_stage(self, stage: str, message: str, **data: Any) -> None:
         started_at = _utc_now()
+        stage_meta = self._stage_meta(stage)
         with self._lock:
             self._stage_started_monotonic[stage] = time.monotonic()
             stage_payload = self._status["stages"].get(stage, {})
@@ -391,6 +453,7 @@ class RunObserver:
                     "started_at": started_at,
                     "ended_at": None,
                     "duration_ms": None,
+                    **stage_meta,
                 }
             )
             if data:
@@ -403,23 +466,25 @@ class RunObserver:
                 "started_at": started_at,
                 "ended_at": None,
                 "duration_ms": None,
+                **stage_meta,
             }
             self._write_status_locked()
         self.event("stage_started", message, stage=stage, **data)
 
     def complete_stage(self, stage: str, message: str, **data: Any) -> None:
         finished_at = _utc_now()
-        duration_ms = None
+        stage_meta = self._stage_meta(stage)
         with self._lock:
             started_mono = self._stage_started_monotonic.get(stage)
             duration_ms = _duration_ms(started_mono) if started_mono is not None else None
-            stage_payload = self._status["stages"].get(stage, {"name": stage})
+            stage_payload = self._status["stages"].get(stage, {"name": stage, **stage_meta})
             stage_payload.update(
                 {
                     "status": "completed",
                     "message": message,
                     "ended_at": finished_at,
                     "duration_ms": duration_ms,
+                    **stage_meta,
                 }
             )
             if data:
@@ -432,6 +497,7 @@ class RunObserver:
                 "started_at": stage_payload.get("started_at"),
                 "ended_at": finished_at,
                 "duration_ms": duration_ms,
+                **stage_meta,
             }
             self._write_status_locked()
         payload = dict(data)
@@ -441,16 +507,18 @@ class RunObserver:
 
     def fail_stage(self, stage: str, message: str, **data: Any) -> None:
         finished_at = _utc_now()
+        stage_meta = self._stage_meta(stage)
         with self._lock:
             started_mono = self._stage_started_monotonic.get(stage)
             duration_ms = _duration_ms(started_mono) if started_mono is not None else None
-            stage_payload = self._status["stages"].get(stage, {"name": stage})
+            stage_payload = self._status["stages"].get(stage, {"name": stage, **stage_meta})
             stage_payload.update(
                 {
                     "status": "failed",
                     "message": message,
                     "ended_at": finished_at,
                     "duration_ms": duration_ms,
+                    **stage_meta,
                 }
             )
             if data:
@@ -463,6 +531,7 @@ class RunObserver:
                 "started_at": stage_payload.get("started_at"),
                 "ended_at": finished_at,
                 "duration_ms": duration_ms,
+                **stage_meta,
             }
             self._write_status_locked()
         payload = dict(data)
@@ -507,6 +576,7 @@ class RunObserver:
                 "planned": len(passes),
                 "workers": workers,
                 "timeout_sec": timeout_sec,
+                "running": 0,
                 "completed": 0,
                 "succeeded": 0,
                 "failed": 0,
@@ -531,7 +601,9 @@ class RunObserver:
     def reviewer_started(self, spec: ReviewerPassSpec) -> None:
         started_at = _utc_now()
         with self._lock:
-            pass_status = self._status["reviewers"]["passes"].setdefault(spec.pass_name, {})
+            reviewers = self._status["reviewers"]
+            reviewers["running"] = reviewers.get("running", 0) + 1
+            pass_status = reviewers["passes"].setdefault(spec.pass_name, {})
             pass_status.update(
                 {
                     "persona": spec.persona,
@@ -574,6 +646,7 @@ class RunObserver:
                     "stderr_file": result.get("stderr_file"),
                 }
             )
+            reviewers["running"] = max(0, reviewers.get("running", 0) - 1)
             reviewers["completed"] += 1
             if result["status"] == "succeeded":
                 reviewers["succeeded"] += 1
@@ -581,6 +654,7 @@ class RunObserver:
                 reviewers["failed"] += 1
             completed = reviewers["completed"]
             planned = reviewers["planned"]
+            running = reviewers["running"]
             self._write_status_locked()
         self.event(
             "reviewer_completed",
@@ -588,6 +662,7 @@ class RunObserver:
             stage="reviewers",
             completed=completed,
             planned=planned,
+            running=running,
             pass_name=pass_name,
             persona=result["persona"],
             provider=result["provider"],
@@ -609,6 +684,7 @@ class RunObserver:
                 "planned_batches": len(batch_ids),
                 "workers": workers,
                 "timeout_sec": timeout_sec,
+                "running_batches": 0,
                 "completed_batches": 0,
                 "succeeded_batches": 0,
                 "failed_batches": 0,
@@ -633,7 +709,9 @@ class RunObserver:
     def verification_batch_started(self, batch_id: str, batch_file: str) -> None:
         started_at = _utc_now()
         with self._lock:
-            batch_status = self._status["verification"]["batches"].setdefault(batch_id, {})
+            verification = self._status["verification"]
+            verification["running_batches"] = verification.get("running_batches", 0) + 1
+            batch_status = verification["batches"].setdefault(batch_id, {})
             batch_status.update(
                 {
                     "status": "running",
@@ -669,8 +747,10 @@ class RunObserver:
                     "stderr_file": result.get("stderr_file"),
                     "attempted_providers": result.get("attempted_providers"),
                     "verified_findings": len(verified_findings),
+                    "timed_out": result.get("timed_out", False),
                 }
             )
+            verification["running_batches"] = max(0, verification.get("running_batches", 0) - 1)
             verification["completed_batches"] += 1
             if result["status"] == "succeeded":
                 verification["succeeded_batches"] += 1
@@ -678,6 +758,7 @@ class RunObserver:
                 verification["failed_batches"] += 1
             completed = verification["completed_batches"]
             planned = verification["planned_batches"]
+            running = verification["running_batches"]
             self._write_status_locked()
         self.event(
             "verification_batch_completed",
@@ -686,6 +767,7 @@ class RunObserver:
             batch_id=batch_id,
             completed=completed,
             planned=planned,
+            running=running,
             provider=result["provider"],
             status=result["status"],
             duration_ms=result.get("duration_ms"),
@@ -711,7 +793,7 @@ class RunObserver:
                 "duration_ms": self._status["duration_ms"],
             }
             self._write_status_locked()
-            self.summary_file.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+            _write_json(self.summary_file, summary)
         self.event(
             "run_completed",
             "CCR run completed",
@@ -2144,7 +2226,105 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional path to also write the final run summary JSON.",
     )
+    parser.add_argument(
+        "--detach",
+        action="store_true",
+        help="Launch the harness in the background and return a run launch payload immediately.",
+    )
+    parser.add_argument(
+        "--detached-child",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     return parser
+
+
+def _build_detached_child_args(
+    raw_args: list[str],
+    *,
+    run_id: str,
+    requirements_file_override: str | None,
+) -> list[str]:
+    child_args: list[str] = []
+    run_id_present = False
+    for token in raw_args:
+        if token in {"--detach", "--detached-child", "--requirements-stdin"}:
+            continue
+        child_args.append(token)
+        if token == "--run-id":
+            run_id_present = True
+    if not run_id_present:
+        child_args.extend(["--run-id", run_id])
+    if requirements_file_override:
+        child_args.extend(["--requirements-file", requirements_file_override])
+    child_args.append("--detached-child")
+    return child_args
+
+
+def launch_ccr_detached(args: argparse.Namespace, raw_args: list[str]) -> dict[str, Any]:
+    detection_cwd = Path(args.project_dir).expanduser().resolve() if args.project_dir else None
+    target = detect_review_target(args.target, artifact_file=args.artifact_file, cwd=detection_cwd)
+    project_dir = _resolve_project_dir(target, args.project_dir)
+
+    run_id = args.run_id or _build_run_id()
+    manifest = _prepare_run_manifest(
+        Path(args.base_dir).expanduser().resolve(),
+        run_id,
+        args.manifest_output,
+    )
+
+    requirements_file_override: str | None = None
+    if args.requirements_stdin:
+        requirements_text = sys.stdin.read()
+        _write_text(Path(manifest["requirements_file"]), requirements_text)
+        requirements_file_override = manifest["requirements_file"]
+
+    child_args = _build_detached_child_args(
+        raw_args,
+        run_id=run_id,
+        requirements_file_override=requirements_file_override,
+    )
+    cmd = [sys.executable, str(Path(__file__).resolve()), *child_args]
+
+    stdout_handle = open(manifest["harness_stdout_file"], "w", encoding="utf-8")
+    stderr_handle = open(manifest["harness_stderr_file"], "w", encoding="utf-8")
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(Path.cwd()),
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            start_new_session=True,
+            text=True,
+        )
+    finally:
+        stdout_handle.close()
+        stderr_handle.close()
+
+    launch_payload = {
+        "contract_version": "ccr.run_launch.v1",
+        "run_id": manifest["run_id"],
+        "pid": proc.pid,
+        "mode": target.mode,
+        "target": target.display_target,
+        "project_dir": str(project_dir) if project_dir else None,
+        "run_dir": manifest["run_dir"],
+        "manifest_file": manifest["manifest_file"],
+        "status_file": manifest["status_file"],
+        "trace_file": manifest["trace_file"],
+        "summary_file": manifest["summary_file"],
+        "report_file": manifest["report_file"],
+        "reviewers_file": manifest["reviewers_file"],
+        "candidates_file": manifest["candidates_file"],
+        "verified_findings_file": manifest["verified_findings_file"],
+        "harness_stdout_file": manifest["harness_stdout_file"],
+        "harness_stderr_file": manifest["harness_stderr_file"],
+        "state": "launched",
+        "done": False,
+        "launched_at": _utc_now(),
+    }
+    return launch_payload
 
 
 def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
@@ -2158,6 +2338,7 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
         args.manifest_output,
     )
     observer = RunObserver(manifest)
+    observer.set_process_info(pid=os.getpid(), detached=bool(args.detached_child))
     observer.event(
         "run_initialized",
         "Initialized isolated CCR run workspace",
@@ -2184,6 +2365,27 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             mode=target.mode,
             target=target.display_target,
         )
+        if target.mode == "mr":
+            observer.event(
+                "mr_fetch_started",
+                "Fetching MR metadata and diff from GitLab",
+                stage=current_stage,
+                target=target.display_target,
+            )
+        elif target.mode == "local":
+            observer.event(
+                "local_artifact_generation_started",
+                "Generating local review artifact",
+                stage=current_stage,
+                target=target.display_target,
+            )
+        elif target.mode == "artifact":
+            observer.event(
+                "artifact_replay_started",
+                "Replaying existing review artifact",
+                stage=current_stage,
+                target=target.display_target,
+            )
         mr_metadata = _materialize_review_artifact(
             manifest,
             target,
@@ -2385,6 +2587,10 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             "status_file": manifest["status_file"],
             "trace_file": manifest["trace_file"],
             "summary_file": manifest["summary_file"],
+            "harness_stdout_file": manifest["harness_stdout_file"],
+            "harness_stderr_file": manifest["harness_stderr_file"],
+            "pid": os.getpid(),
+            "detached": bool(args.detached_child),
             "review_plan_summary": route_plan.get("summary"),
             "report_file": manifest["report_file"],
             "reviewers_file": manifest["reviewers_file"],
@@ -2414,6 +2620,10 @@ def main() -> None:
     parser = _build_arg_parser()
     args = parser.parse_args()
     try:
+        if args.detach and not args.detached_child:
+            payload = launch_ccr_detached(args, sys.argv[1:])
+            print(json.dumps(payload, indent=2))
+            return
         summary = run_ccr(args)
     except Exception as exc:  # noqa: BLE001
         print(json.dumps({"error": f"{type(exc).__name__}: {exc}"}, indent=2), file=sys.stderr)

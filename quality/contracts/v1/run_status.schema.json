@@ -6,8 +6,13 @@
   "required": [
     "contract_version",
     "run_id",
+    "pid",
+    "revision",
+    "event_seq",
     "state",
     "started_at",
+    "updated_at",
+    "heartbeat_at",
     "current_stage",
     "stages",
     "reviewers",
@@ -17,8 +22,14 @@
   "properties": {
     "contract_version": { "const": "ccr.run_status.v1" },
     "run_id": { "type": "string", "minLength": 1 },
+    "pid": { "type": "integer", "minimum": 1 },
+    "detached": { "type": "boolean" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "event_seq": { "type": "integer", "minimum": 0 },
     "state": { "enum": ["running", "completed", "failed"] },
     "started_at": { "type": "string", "minLength": 1 },
+    "updated_at": { "type": ["string", "null"] },
+    "heartbeat_at": { "type": ["string", "null"] },
     "finished_at": { "type": ["string", "null"] },
     "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
     "current_stage": {
@@ -31,7 +42,9 @@
         "message": { "type": ["string", "null"] },
         "started_at": { "type": ["string", "null"] },
         "ended_at": { "type": ["string", "null"] },
-        "duration_ms": { "type": ["integer", "null"], "minimum": 0 }
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "index": { "type": "integer", "minimum": 1 },
+        "total": { "type": "integer", "minimum": 1 }
       }
     },
     "stages": { "type": "object", "additionalProperties": true },
@@ -45,6 +58,7 @@
         "planned": { "type": "integer", "minimum": 0 },
         "workers": { "type": "integer", "minimum": 0 },
         "timeout_sec": { "type": ["integer", "null"], "minimum": 0 },
+        "running": { "type": "integer", "minimum": 0 },
         "completed": { "type": "integer", "minimum": 0 },
         "succeeded": { "type": "integer", "minimum": 0 },
         "failed": { "type": "integer", "minimum": 0 },
@@ -60,6 +74,7 @@
         "planned_batches": { "type": "integer", "minimum": 0 },
         "workers": { "type": "integer", "minimum": 0 },
         "timeout_sec": { "type": ["integer", "null"], "minimum": 0 },
+        "running_batches": { "type": "integer", "minimum": 0 },
         "completed_batches": { "type": "integer", "minimum": 0 },
         "succeeded_batches": { "type": "integer", "minimum": 0 },
         "failed_batches": { "type": "integer", "minimum": 0 },

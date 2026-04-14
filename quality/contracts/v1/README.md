@@ -12,6 +12,8 @@ Current schemas:
 - `route_plan.schema.json`
 - `run_status.schema.json`
 - `run_summary.schema.json`
+- `run_launch.schema.json`
+- `watch_result.schema.json`
 - `static_analysis.schema.json`
 - `reviewer_result.schema.json`
 - `consolidated_candidate.schema.json`
