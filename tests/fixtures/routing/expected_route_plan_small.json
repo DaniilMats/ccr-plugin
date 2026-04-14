@@ -1,0 +1,25 @@
+{
+  "contract_version": "ccr.route_plan.v1",
+  "passes": [
+    "logic_p1",
+    "logic_p2",
+    "logic_p3",
+    "security_p1",
+    "security_p2"
+  ],
+  "total_passes": 5,
+  "full_matrix": false,
+  "pass_counts": {
+    "logic": 3,
+    "security": 2,
+    "concurrency": 0,
+    "performance": 0,
+    "requirements": 0
+  },
+  "reasons": [
+    "always include Logic x3 baseline (Gemini + Codex + Claude)",
+    "triggered specialty personas: security",
+    "highest-risk personas duplicated on pass 2: security"
+  ],
+  "summary": "Review plan: medium-risk MR → Logic x3, Security x2"
+}

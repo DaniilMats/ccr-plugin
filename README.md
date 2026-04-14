@@ -77,6 +77,33 @@ CCR walks the user through:
 7. Printing a numbered report
 8. In MR mode: asking which findings to publish, then posting inline
 
+## Local safety checks
+
+Before larger refactors, run the deterministic local safety harness:
+
+```bash
+./scripts/smoke.sh
+```
+
+This runs:
+- `py_compile` on the CCR Python entrypoints
+- `python3 -m unittest discover -s tests -v`
+- smoke invocations for `ccr_run_init.py`, `ccr_routing.py`, `repomap.py`, and `review_context.py`
+
+You can also run the unit tests directly:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+Optional dogfooding signal:
+
+```text
+use ccr to review uncommitted
+```
+
+That self-review is useful as an additional signal, but it should not replace the deterministic smoke/tests above.
+
 ## Structure
 
 The repo is a Claude Code marketplace hosting a single plugin in the `quality/` subdirectory:
@@ -124,6 +151,11 @@ ccr-plugin/
 │           └── schemas/
 │               ├── code_review_response.schema.json              # reviewer output
 │               └── code_review_verification_response.schema.json # verifier output
+├── scripts/
+│   └── smoke.sh                    # deterministic local safety harness
+├── tests/
+│   ├── fixtures/                   # golden fixtures for routing/context smoke cases
+│   └── test_*.py                   # stdlib unittest safety net
 └── README.md
 ```
 
@@ -141,7 +173,7 @@ See `quality/agents/ccr.md` for the full workflow specification.
 
 ## Status
 
-Phase 0 is in progress: CCR now has an isolated run-workspace initializer (`ccr_run_init.py`), versioned contract schemas under `quality/contracts/v1/`, and aligned documentation for the current 4-14-pass / 15-minute-task model. The larger deterministic harness, posting helper, tests, and eval suites are still future work.
+Phase 0.5 is in progress: CCR now has an isolated run-workspace initializer (`ccr_run_init.py`), versioned contract schemas under `quality/contracts/v1/`, stdlib unit tests under `tests/`, golden fixtures for routing/context behavior, and a deterministic local smoke harness at `./scripts/smoke.sh`. The larger deterministic runtime harness, posting helper, and broader eval suites are still future work.
 
 ## License
 

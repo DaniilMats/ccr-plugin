@@ -1,0 +1,27 @@
+{
+  "contract_version": "ccr.route_input.v1",
+  "changed_files": [
+    "internal/auth/jwt.go",
+    "internal/worker/pool.go",
+    "internal/http/handler.go"
+  ],
+  "changed_lines": 220,
+  "has_requirements": true,
+  "requirements_from_mr_description": false,
+  "user_requested_exhaustive": false,
+  "behavior_change_ambiguous": true,
+  "triggered_personas": [
+    "security",
+    "concurrency",
+    "performance",
+    "requirements"
+  ],
+  "highest_risk_personas": [
+    "security",
+    "concurrency"
+  ],
+  "critical_surfaces": [
+    "auth",
+    "public-api"
+  ]
+}

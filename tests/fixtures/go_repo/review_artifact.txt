@@ -1,0 +1,18 @@
+NOTE: This is a synthetic full-code review artifact.
+Treat added lines as the current contents of existing code under review.
+Scope: file review of existing code.
+
+diff --git a/internal/auth/jwt.go b/internal/auth/jwt.go
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/internal/auth/jwt.go
+@@ -0,0 +1,10 @@
++package auth
++
++func ValidateToken(raw string) error {
++	if raw == "" {
++		return ErrInvalidToken
++	}
++	return nil
++}

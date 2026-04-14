@@ -1,0 +1,18 @@
+{
+  "contract_version": "ccr.route_input.v1",
+  "changed_files": [
+    "internal/service/auth.go"
+  ],
+  "changed_lines": 42,
+  "has_requirements": false,
+  "requirements_from_mr_description": false,
+  "user_requested_exhaustive": false,
+  "behavior_change_ambiguous": false,
+  "triggered_personas": [
+    "security"
+  ],
+  "highest_risk_personas": [
+    "security"
+  ],
+  "critical_surfaces": []
+}

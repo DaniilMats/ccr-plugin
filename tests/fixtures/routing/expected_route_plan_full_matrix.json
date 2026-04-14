@@ -1,0 +1,36 @@
+{
+  "contract_version": "ccr.route_plan.v1",
+  "passes": [
+    "logic_p1",
+    "logic_p2",
+    "logic_p3",
+    "security_p1",
+    "security_p2",
+    "security_p3",
+    "concurrency_p1",
+    "concurrency_p2",
+    "concurrency_p3",
+    "performance_p1",
+    "performance_p2",
+    "performance_p3",
+    "requirements_p1",
+    "requirements_p2"
+  ],
+  "total_passes": 14,
+  "full_matrix": true,
+  "pass_counts": {
+    "logic": 3,
+    "security": 3,
+    "concurrency": 3,
+    "performance": 3,
+    "requirements": 2
+  },
+  "reasons": [
+    "always include Logic x3 baseline (Gemini + Codex + Claude)",
+    "3+ specialty personas are triggered",
+    "critical surfaces touched: auth, public-api",
+    "behavior-changing requirements are ambiguous",
+    "requirements/spec text exists, so the full matrix includes Requirements x2 (14 total)"
+  ],
+  "summary": "Review plan: high-risk MR → Logic x3, Security x3, Concurrency x3, Performance x3, Requirements x2"
+}

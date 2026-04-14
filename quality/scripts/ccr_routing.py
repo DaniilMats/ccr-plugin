@@ -118,6 +118,10 @@ class RoutingPlan(BaseModel):
     summary: str
 
 
+RoutingInput.model_rebuild()
+RoutingPlan.model_rebuild()
+
+
 def _pass_name(persona: str, number: int) -> PassName:
     return f"{persona}_p{number}"  # type: ignore[return-value]
 
