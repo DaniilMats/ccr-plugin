@@ -82,26 +82,41 @@ The repo is a Claude Code marketplace hosting a single plugin in the `ccr/` subd
 ```
 ccr-plugin/
 ├── .claude-plugin/
-│   └── marketplace.json                 # marketplace manifest (plugins[].source = "./ccr")
-├── ccr/                                  # the plugin itself — ${CLAUDE_PLUGIN_ROOT} resolves here
+│   └── marketplace.json            # marketplace manifest (plugins[].source = "./ccr")
+├── ccr/                            # the plugin — ${CLAUDE_PLUGIN_ROOT} resolves here
 │   ├── .claude-plugin/
-│   │   └── plugin.json                  # plugin manifest
+│   │   └── plugin.json             # plugin manifest
 │   ├── agents/
-│   │   └── ccr.md                       # agent definition (uses ${CLAUDE_PLUGIN_ROOT})
+│   │   └── ccr.md                  # agent definition (uses ${CLAUDE_PLUGIN_ROOT})
 │   ├── hooks/
-│   │   └── hooks.json                   # SessionStart hook → install.sh --check-only
-│   ├── install.sh                       # dependency checker
+│   │   └── hooks.json              # SessionStart hook → install.sh --check-only
+│   ├── install.sh                  # dependency checker
 │   └── scripts/
-│       ├── ccr_routing.py               # adaptive fanout planner
+│       ├── ccr_routing.py          # adaptive fanout planner (4-10 passes)
 │       └── llm-proxy/
-│           ├── code_review.py         # main reviewer wrapper
-│           ├── code_review_verify.py  # verifier
-│           ├── review_context.py               # repo context builder
-│           ├── static_analysis.py              # go vet / staticcheck integration
-│           ├── shuffle_diff.py                 # diff shuffler for Pass 2 diversity
-│           ├── adapters/                       # gemini + codex adapters
-│           ├── prompts/                        # reviewer prompts per persona
-│           └── schemas/                        # JSON schemas for reviewer/verifier output
+│           ├── code_review.py          # main reviewer wrapper
+│           ├── code_review_verify.py   # verifier (Codex default, Gemini fallback)
+│           ├── review_context.py       # repo + focus-file context builder
+│           ├── static_analysis.py      # go vet / staticcheck / gosec integration
+│           ├── shuffle_diff.py         # diff shuffler for Pass 2 diversity
+│           ├── llm_proxy.py            # internal provider dispatcher
+│           ├── validator.py            # JSON schema validator
+│           ├── adapters/
+│           │   ├── base.py             # provider adapter interface
+│           │   ├── gemini.py           # Gemini CLI adapter
+│           │   └── codex.py            # Codex CLI adapter
+│           ├── prompts/
+│           │   ├── code_review.txt         # base code review prompt
+│           │   ├── go_style_guide.txt      # embedded Go style guide
+│           │   ├── review_logic.txt        # Logic persona prompt
+│           │   ├── review_security.txt     # Security persona prompt
+│           │   ├── review_concurrency.txt  # Concurrency persona prompt
+│           │   ├── review_performance.txt  # Performance persona prompt
+│           │   ├── review_requirements.txt # Spec compliance prompt
+│           │   └── review_verify.txt       # Verifier prompt
+│           └── schemas/
+│               ├── code_review_response.schema.json              # reviewer output
+│               └── code_review_verification_response.schema.json # verifier output
 └── README.md
 ```
 
