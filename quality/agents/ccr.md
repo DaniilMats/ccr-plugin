@@ -606,7 +606,28 @@ N. [SEVERITY] file:line — confidence marker — short problem description
 - Include EVERY verified finding — no truncation
 
 #### MR mode
-After the list, output exactly:
+After printing the numbered list, ask the user which findings to publish — **prefer `AskUserQuestion` with multi-select** so the user gets clickable checkboxes instead of having to type comma-separated numbers.
+
+##### Building the AskUserQuestion call
+
+1. **Group findings by severity into separate questions** so each tab in the picker maps to one severity tier:
+   - Question 1 → `bug` findings (header: `Bugs`)
+   - Question 2 → `warning` findings (header: `Warnings`)
+   - Question 3 → `info` findings (header: `Info`)
+   - Question 4 → `requirements` findings tagged `[REQUIREMENTS]` (header: `Spec compliance`), only if any exist and they were not already absorbed into one of the above
+2. **Skip empty severity buckets** — never emit an empty question.
+3. Each question MUST have `multiSelect: true`.
+4. Each option's `label` is the finding's number plus a short title, e.g. `"3. nil LoanID bypass"`. Each option's `description` is `[SEVERITY] file:line — one-line impact summary`. Use the same finding numbers from the printed report so user choices map back unambiguously.
+5. **Per-question limit is 4 options.** If a severity bucket has 1-4 findings → one question covers it. If it has 5+ findings → emit the first 4 in this AskUserQuestion call and remember the rest for a follow-up call after the user answers. Never silently drop findings — every verified finding MUST be reachable through one of the questions, even if it takes multiple AskUserQuestion calls in series.
+6. **Per-call limit is 4 questions.** With four severity tiers and ≤4 findings per tier, one call covers up to 16 findings. Above that — chain calls.
+
+##### Parsing answers
+
+For each finding the user ticks in the picker, mark its number as "to publish". The union across all questions in all calls is the publish set. If the user picks no options in any question, treat that as "none for this batch" and continue to the next batch (or to Step 9 with the current set).
+
+##### Fallback when AskUserQuestion is unavailable
+
+`AskUserQuestion` only works when CCR runs in the **foreground**. If the tool call fails (e.g. CCR was launched as a background subagent), CCR MUST fall back to the legacy text-based prompt — do NOT loop on AskUserQuestion and do NOT silently skip the user. Print exactly:
 
 ```
 Какие комментарии опубликовать? (номера через запятую, "all" или "none")
@@ -629,6 +650,8 @@ Then **STOP and WAIT** for the user's reply. Parse the response:
 - ❌ Unnumbered findings (user can't reference them)
 - ❌ Showing raw unverified candidates as if they were verified
 - ❌ Proceeding to Step 9 for non-MR modes
+- ❌ Falling back to the text prompt in foreground mode just because AskUserQuestion feels heavier — the picker exists for a reason
+- ❌ Truncating the AskUserQuestion options because there are more than 4 findings in a severity bucket — chain follow-up calls instead, every verified finding MUST be reachable
 
 ### Step 9: Post Approved Comments (MR Mode Only)
 
