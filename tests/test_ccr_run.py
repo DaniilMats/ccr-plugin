@@ -166,7 +166,7 @@ class TestCCRRun(unittest.TestCase):
             self.assertIsNotNone(watch_payload)
             self.assertTrue(watch_payload["done"], watch_payload)
             self.assertEqual(watch_payload["state"], "completed")
-            self.assertTrue(any("Reviewers:" in line for line in all_display_lines))
+            self.assertTrue(any("▶ Reviewers" in line for line in all_display_lines))
 
             final_watch = subprocess.run(
                 [

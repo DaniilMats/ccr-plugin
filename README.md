@@ -170,7 +170,7 @@ All paths inside `quality/agents/ccr.md` use `${CLAUDE_PLUGIN_ROOT}` so the plug
 2. Always initialize an isolated run workspace first, then run adaptive fanout planning. Logic Pass 1 + Pass 2 + Pass 3 are mandatory; total planned fanout stays within 4-14 passes.
 3. Phase 1 orchestration now runs through the deterministic `quality/scripts/ccr_run.py` harness, which owns artifact prep, routing, reviewer subprocess execution, consolidation, verification, and report generation.
 4. The harness now supports detached/background execution and writes machine-readable observability artifacts: `status.json`, `trace.jsonl`, `run_summary.json`, plus launch metadata for watching.
-5. `quality/scripts/ccr_watch.py` now supports compact JSON, quiet text mode, cursor files, and follow mode so progress updates do not flood the conversation.
+5. `quality/scripts/ccr_watch.py` now supports compact JSON, quiet icon-prefixed text mode, cursor files, and follow mode so progress updates do not flood the conversation.
 6. In Claude Code, `Monitor` is the preferred live UX layer for long reviews; session-scoped scheduled tasks (`/loop` / `CronCreate`) remain a coarse 1-minute fallback.
 7. Candidate findings must pass verification before being shown.
 8. Local diff / file / package modes are **report-only** — no posting target exists.

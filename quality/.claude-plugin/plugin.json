@@ -1,7 +1,7 @@
 {
   "name": "quality",
   "description": "Adaptive multi-model code reviewer. Reviews GitLab MRs, local diffs, Go files, and Go packages; routes 4-14 reviewer passes through a detached, observable deterministic harness, verifies consolidated findings, and posts approved inline comments for MR mode.",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "author": {
     "name": "Daniil Matsiutsia"
   },

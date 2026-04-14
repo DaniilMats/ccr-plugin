@@ -23,6 +23,44 @@ from typing import Any
 
 _CURSOR_CONTRACT_VERSION = "ccr.watch_cursor.v1"
 
+_STAGE_LABELS = {
+    "bootstrap": "Bootstrap",
+    "artifact_preparation": "Artifact",
+    "requirements": "Requirements",
+    "routing": "Routing",
+    "review_context": "Context",
+    "static_analysis": "Static analysis",
+    "shuffle_diff": "Shuffled diff",
+    "reviewers": "Reviewers",
+    "candidates": "Candidates",
+    "verification": "Verification",
+    "report": "Report",
+    "completed": "Completed",
+    "failed": "Failed",
+}
+
+_STATE_ICONS = {
+    "pending": "⏳",
+    "running": "⏳",
+    "completed": "✅",
+    "failed": "✖",
+}
+
+_STAGE_ICONS = {
+    "artifact_preparation": "📦",
+    "requirements": "📋",
+    "routing": "🧭",
+    "review_context": "📚",
+    "static_analysis": "🔎",
+    "shuffle_diff": "🔀",
+    "reviewers": "▶",
+    "candidates": "🧩",
+    "verification": "✓",
+    "report": "📝",
+    "completed": "✅",
+    "failed": "✖",
+}
+
 
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
@@ -98,73 +136,234 @@ def _format_milliseconds_short(total_ms: int | None) -> str:
     return _format_seconds_short(int(round(seconds)))
 
 
+def _short_run_id(run_id: Any) -> str:
+    text = str(run_id or "unknown")
+    if "-" in text:
+        tail = text.rsplit("-", 1)[-1]
+        if tail:
+            return tail
+    return text
+
+
+def _stage_name(stage: str | None) -> str:
+    key = str(stage or "")
+    return _STAGE_LABELS.get(key, key.replace("_", " ").title() if key else "Unknown")
+
+
 def _stage_label(current_stage: dict[str, Any] | None) -> str:
     if not current_stage:
         return "(no current stage)"
-    name = current_stage.get("name") or "unknown"
+    name = _stage_name(str(current_stage.get("name") or "unknown"))
     index = current_stage.get("index")
     total = current_stage.get("total")
     if isinstance(index, int) and isinstance(total, int) and total > 0:
-        return f"[{index}/{total}] {name}"
+        return f"{name} [{index}/{total}]"
     return str(name)
+
+
+def _format_snapshot_line(kind: str, progress: dict[str, Any], *, verification: bool = False) -> str | None:
+    if not isinstance(progress, dict):
+        return None
+    if verification:
+        planned = int(progress.get("planned_batches") or 0)
+        completed = int(progress.get("completed_batches") or 0)
+        running = int(progress.get("running_batches") or 0)
+    else:
+        planned = int(progress.get("planned") or 0)
+        completed = int(progress.get("completed") or 0)
+        running = int(progress.get("running") or 0)
+    if planned <= 0:
+        return None
+    workers = int(progress.get("workers") or 0)
+    estimate = _format_seconds_short(int(progress.get("estimated_max_duration_sec") or 0))
+    return f"{kind} {completed}/{planned} complete · {running} running · workers={workers} · est≤{estimate}"
 
 
 def _summarize_status(status: dict[str, Any]) -> list[str]:
     lines: list[str] = []
-    run_id = status.get("run_id") or "unknown"
-    state = status.get("state") or "unknown"
+    run_id = _short_run_id(status.get("run_id"))
+    state = str(status.get("state") or "unknown")
     current_stage = status.get("current_stage") if isinstance(status.get("current_stage"), dict) else None
-    lines.append(f"Run {run_id}: state={state}, stage={_stage_label(current_stage)}")
+    icon = _STATE_ICONS.get(state, "ℹ")
+    lines.append(f"{icon} CCR {run_id} · {state} · {_stage_label(current_stage)}")
 
-    reviewers = status.get("reviewers") if isinstance(status.get("reviewers"), dict) else {}
-    planned_reviewers = int(reviewers.get("planned") or 0)
-    if planned_reviewers:
-        lines.append(
-            "Reviewers: {completed}/{planned} completed, {running} running, workers={workers}, est<={estimate}".format(
-                completed=int(reviewers.get("completed") or 0),
-                planned=planned_reviewers,
-                running=int(reviewers.get("running") or 0),
-                workers=int(reviewers.get("workers") or 0),
-                estimate=_format_seconds_short(int(reviewers.get("estimated_max_duration_sec") or 0)),
-            )
-        )
+    reviewer_line = _format_snapshot_line("▶ Reviewers", status.get("reviewers", {}), verification=False)
+    if reviewer_line:
+        lines.append(reviewer_line)
 
-    verification = status.get("verification") if isinstance(status.get("verification"), dict) else {}
-    planned_batches = int(verification.get("planned_batches") or 0)
-    if planned_batches:
-        lines.append(
-            "Verification: {completed}/{planned} completed, {running} running, workers={workers}, est<={estimate}".format(
-                completed=int(verification.get("completed_batches") or 0),
-                planned=planned_batches,
-                running=int(verification.get("running_batches") or 0),
-                workers=int(verification.get("workers") or 0),
-                estimate=_format_seconds_short(int(verification.get("estimated_max_duration_sec") or 0)),
-            )
-        )
+    verification_line = _format_snapshot_line("✓ Verification", status.get("verification", {}), verification=True)
+    if verification_line:
+        lines.append(verification_line)
     return lines
 
 
-def _render_event(event: dict[str, Any]) -> str:
-    stage = event.get("stage") or "run"
-    message = str(event.get("message") or event.get("event") or "update")
+def _basename(path_value: Any) -> str:
+    text = str(path_value or "").strip()
+    return Path(text).name if text else ""
+
+
+def _format_stage_event(event: dict[str, Any]) -> str | None:
+    stage = str(event.get("stage") or "")
     data = event.get("data") if isinstance(event.get("data"), dict) else {}
-    detail_parts: list[str] = []
-    if "pass_name" in data:
-        detail_parts.append(str(data["pass_name"]))
-    if "batch_id" in data:
-        detail_parts.append(str(data["batch_id"]))
-    if "provider" in data:
-        detail_parts.append(str(data["provider"]))
-    if "completed" in data and "planned" in data:
-        detail_parts.append(f"{data['completed']}/{data['planned']}")
-    if "finding_count" in data:
-        detail_parts.append(f"findings={data['finding_count']}")
-    if "verified_count" in data:
-        detail_parts.append(f"verified={data['verified_count']}")
-    if "duration_ms" in data:
-        detail_parts.append(_format_milliseconds_short(int(data["duration_ms"])))
-    suffix = f" ({', '.join(detail_parts)})" if detail_parts else ""
-    return f"[{stage}] {message}{suffix}"
+    icon = _STAGE_ICONS.get(stage, "ℹ")
+    if event.get("event") == "stage_started":
+        if stage in {"reviewers", "verification"}:
+            return None
+        return f"{icon} {_stage_name(stage)} started"
+    if event.get("event") != "stage_completed":
+        return None
+    if stage == "artifact_preparation":
+        return f"📦 Artifact ready · files={int(data.get('changed_file_count') or 0)} · lines={int(data.get('changed_lines') or 0)}"
+    if stage == "requirements":
+        source = str(data.get("source") or "none")
+        has_requirements = bool(data.get("has_requirements"))
+        return f"📋 Requirements ready · source={source} · provided={str(has_requirements).lower()}"
+    if stage == "routing":
+        return f"🧭 Routing ready · planned={int(data.get('planned') or 0)} · full_matrix={str(bool(data.get('full_matrix'))).lower()}"
+    if stage == "review_context":
+        context_status = str(data.get("context_status") or "unknown")
+        return f"📚 Context ready · status={context_status}"
+    if stage == "static_analysis":
+        return f"🔎 Static analysis ready · findings={int(data.get('total_findings') or 0)}"
+    if stage == "shuffle_diff":
+        return "🔀 Shuffled diff ready"
+    if stage == "reviewers":
+        return f"▶ Reviewers finished · succeeded={int(data.get('succeeded') or 0)} · failed={int(data.get('failed') or 0)} · findings={int(data.get('finding_count') or 0)}"
+    if stage == "candidates":
+        return f"🧩 Candidates ready · candidates={int(data.get('candidate_count') or 0)} · source_findings={int(data.get('source_finding_count') or 0)}"
+    if stage == "verification":
+        return f"✓ Verification finished · verified={int(data.get('verified_count') or 0)} · batches={int(data.get('batch_count') or 0)}"
+    if stage == "report":
+        report_file = _basename(data.get("report_file"))
+        report_suffix = f" · report={report_file}" if report_file else ""
+        return f"📝 Report ready · verified={int(data.get('verified_count') or 0)}{report_suffix}"
+    duration_ms = data.get("duration_ms")
+    duration_suffix = f" · {_format_milliseconds_short(int(duration_ms))}" if duration_ms is not None else ""
+    return f"{icon} {_stage_name(stage)} finished{duration_suffix}"
+
+
+def _aggregate_reviewer_events(events: list[dict[str, Any]], reviewers: dict[str, Any]) -> list[str]:
+    completed_events = [event for event in events if event.get("event") == "reviewer_completed"]
+    if not completed_events:
+        return []
+    last_data = completed_events[-1].get("data") if isinstance(completed_events[-1].get("data"), dict) else {}
+    completed = int(last_data.get("completed") or reviewers.get("completed") or 0)
+    planned = int(last_data.get("planned") or reviewers.get("planned") or 0)
+    running = int(last_data.get("running") or reviewers.get("running") or 0)
+    delta = len(completed_events)
+    lines = [f"▶ Reviewers +{delta} ⇒ {completed}/{planned} complete · {running} running"]
+
+    failed = [event for event in completed_events if str((event.get("data") or {}).get("status") or "") != "succeeded"]
+    if failed:
+        names = ", ".join(str((event.get("data") or {}).get("pass_name") or "unknown") for event in failed[:3])
+        extra = "" if len(failed) <= 3 else f" +{len(failed) - 3} more"
+        lines.append(f"✖ Reviewer failures: {len(failed)} pass(es) · {names}{extra}")
+
+    finding_events = [
+        event
+        for event in completed_events
+        if int(((event.get("data") or {}).get("finding_count") or 0)) > 0
+    ]
+    if finding_events:
+        total_findings = sum(int(((event.get("data") or {}).get("finding_count") or 0)) for event in finding_events)
+        names = ", ".join(str((event.get("data") or {}).get("pass_name") or "unknown") for event in finding_events[:3])
+        extra = "" if len(finding_events) <= 3 else f" +{len(finding_events) - 3} more"
+        lines.append(f"⚠ Reviewer signals: {total_findings} finding(s) · {names}{extra}")
+    return lines
+
+
+def _aggregate_verification_events(events: list[dict[str, Any]], verification: dict[str, Any]) -> list[str]:
+    completed_events = [event for event in events if event.get("event") == "verification_batch_completed"]
+    if not completed_events:
+        return []
+    last_data = completed_events[-1].get("data") if isinstance(completed_events[-1].get("data"), dict) else {}
+    completed = int(last_data.get("completed") or verification.get("completed_batches") or 0)
+    planned = int(last_data.get("planned") or verification.get("planned_batches") or 0)
+    running = int(last_data.get("running") or verification.get("running_batches") or 0)
+    delta = len(completed_events)
+    lines = [f"✓ Verification +{delta} ⇒ {completed}/{planned} complete · {running} running"]
+
+    failed = [event for event in completed_events if str((event.get("data") or {}).get("status") or "") != "succeeded"]
+    if failed:
+        names = ", ".join(str((event.get("data") or {}).get("batch_id") or "unknown") for event in failed[:3])
+        extra = "" if len(failed) <= 3 else f" +{len(failed) - 3} more"
+        lines.append(f"✖ Verification failures: {len(failed)} batch(es) · {names}{extra}")
+    return lines
+
+
+def _format_misc_event(event: dict[str, Any]) -> str | None:
+    event_name = str(event.get("event") or "")
+    stage = str(event.get("stage") or "")
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    if event_name in {"reviewer_started", "verification_batch_started"}:
+        return None
+    if event_name == "reviewers_started":
+        return "▶ Reviewers launched · planned={planned} · workers={workers} · est≤{estimate}".format(
+            planned=int(data.get("planned") or 0),
+            workers=int(data.get("workers") or 0),
+            estimate=_format_seconds_short(int(data.get("estimated_max_duration_sec") or 0)),
+        )
+    if event_name == "verification_started":
+        return "✓ Verification launched · batches={planned} · workers={workers} · est≤{estimate}".format(
+            planned=int(data.get("planned") or 0),
+            workers=int(data.get("workers") or 0),
+            estimate=_format_seconds_short(int(data.get("estimated_max_duration_sec") or 0)),
+        )
+    if event_name == "run_completed":
+        report_file = _basename(data.get("report_file"))
+        report_suffix = f" · report={report_file}" if report_file else ""
+        return f"✅ CCR complete · verified={int(data.get('verified_count') or 0)}{report_suffix}"
+    if event_name == "run_failed":
+        return f"✖ CCR failed · {str(event.get('message') or 'unknown error')}"
+    if event_name in {"stage_started", "stage_completed"}:
+        return _format_stage_event(event)
+    message = str(event.get("message") or event_name or "update")
+    icon = _STAGE_ICONS.get(stage, "ℹ")
+    return f"{icon} {message}"
+
+
+def _dedupe_preserve_order(lines: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for line in lines:
+        if not line or line in seen:
+            continue
+        seen.add(line)
+        result.append(line)
+    return result
+
+
+def _render_display_lines(status: dict[str, Any], events: list[dict[str, Any]], *, emit_heartbeat: bool, done: bool) -> list[str]:
+    lines: list[str] = []
+    if emit_heartbeat or events or done:
+        lines.append(_summarize_status(status)[0])
+
+    reviewer_progress_lines = _aggregate_reviewer_events(events, status.get("reviewers", {}))
+    verification_progress_lines = _aggregate_verification_events(events, status.get("verification", {}))
+
+    misc_lines: list[str] = []
+    for event in events:
+        if event.get("event") in {"reviewer_completed", "verification_batch_completed"}:
+            continue
+        rendered = _format_misc_event(event)
+        if rendered:
+            misc_lines.append(rendered)
+
+    current_stage = status.get("current_stage") if isinstance(status.get("current_stage"), dict) else None
+    current_stage_name = str((current_stage or {}).get("name") or "")
+    if (emit_heartbeat or done) and current_stage_name == "reviewers" and not reviewer_progress_lines:
+        reviewer_line = _format_snapshot_line("▶ Reviewers", status.get("reviewers", {}), verification=False)
+        if reviewer_line:
+            lines.append(reviewer_line)
+    if (emit_heartbeat or done) and current_stage_name == "verification" and not verification_progress_lines:
+        verification_line = _format_snapshot_line("✓ Verification", status.get("verification", {}), verification=True)
+        if verification_line:
+            lines.append(verification_line)
+
+    lines.extend(misc_lines)
+    lines.extend(reviewer_progress_lines)
+    lines.extend(verification_progress_lines)
+    return _dedupe_preserve_order(lines)
 
 
 def _compact_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]:
@@ -333,11 +532,7 @@ def watch_run(
             done = state in {"completed", "failed"}
             changed = bool(events)
             if changed or done or time.monotonic() >= deadline:
-                display_lines: list[str] = []
-                if emit_heartbeat or changed or done:
-                    display_lines.extend(_summarize_status(status))
-                for event in events:
-                    display_lines.append(_render_event(event))
+                display_lines = _render_display_lines(status, events, emit_heartbeat=emit_heartbeat, done=done)
                 current_stage = status.get("current_stage") if isinstance(status.get("current_stage"), dict) else None
                 return {
                     "contract_version": "ccr.watch_result.v1",
@@ -363,7 +558,7 @@ def watch_run(
             if time.monotonic() >= deadline or not alive:
                 state = "pending" if alive else "failed"
                 lines = [
-                    "Run status is not available yet." if alive else "Detached CCR process exited before writing status.json."
+                    "⏳ Waiting for CCR status..." if alive else "✖ Detached CCR process exited before writing status.json."
                 ]
                 return {
                     "contract_version": "ccr.watch_result.v1",
@@ -411,7 +606,7 @@ def watch_run(
         "summary": status.get("summary", {}),
         "artifacts": status.get("artifacts", {}),
         "new_events": last_events,
-        "display_lines": _summarize_status(status) if emit_heartbeat and status else [],
+        "display_lines": _render_display_lines(status, last_events, emit_heartbeat=emit_heartbeat, done=(status.get("state") in {"completed", "failed"}) if status else False) if status else [],
         "next_poll_sec": 3,
     }
 

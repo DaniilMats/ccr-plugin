@@ -74,6 +74,7 @@ Prefer the **detached launch + watch** flow over one giant foreground Bash call.
 ### Watch rule — preferred path
 - Prefer the `Monitor` tool over repeated Bash polling
 - Use `ccr_watch.py` in **follow + text** mode so only human-readable deltas enter the transcript
+- The watcher emits compact icon-prefixed lines; prefer relaying those exact deltas instead of inventing your own filler phrasing
 - Use a run-scoped cursor file so the watcher suppresses already-seen events
 - Stop watching when the monitor process exits, then read `summary_file` and `report_file`
 
@@ -214,6 +215,8 @@ Start a monitor using the preferred watch command from the execution rules above
 Rules:
 - allow the watcher to manage progress deltas through `<watch_cursor_file>`
 - surface only the new human-readable lines the watcher emits
+- if a watcher line is already clear, you may repeat it verbatim or paraphrase it closely
+- do **NOT** add generic filler like `Continuing.`, `Reviewers progressing.`, or `Waiting on reviewer passes.`
 - when the watcher exits, read `summary_file` and `report_file`
 
 #### Fallback path: short-lived `Bash` polls
@@ -342,12 +345,13 @@ Use the verifier-adjusted file/line/message when posting or summarizing.
 
 1. Never bypass `ccr_run.py` for reviewer orchestration
 2. Prefer detached launch + `Monitor` + `ccr_watch.py --follow` over repeated Bash polls or one huge foreground Bash call
-3. If you must fall back to foreground mode, never use a short/default Bash timeout — use at least 2700000ms
-4. Never post comments without explicit user approval in MR mode
-5. Always show only **verified** findings as final findings
-6. Local diff / file / package modes are **report-only**
-7. AskUserQuestion is mandatory in MR mode before any posting fallback text prompt
-8. Requirements review now runs through the same deterministic wrapper path as other personas — do not revive the old prompt-only requirements path
+3. Never respond to monitor updates with generic filler; always use the concrete watcher delta or stay silent until the next meaningful update
+4. If you must fall back to foreground mode, never use a short/default Bash timeout — use at least 2700000ms
+5. Never post comments without explicit user approval in MR mode
+6. Always show only **verified** findings as final findings
+7. Local diff / file / package modes are **report-only**
+8. AskUserQuestion is mandatory in MR mode before any posting fallback text prompt
+9. Requirements review now runs through the same deterministic wrapper path as other personas — do not revive the old prompt-only requirements path
 
 ## Comment Format
 
