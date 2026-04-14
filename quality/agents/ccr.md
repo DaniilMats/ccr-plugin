@@ -605,8 +605,13 @@ N. [SEVERITY] file:line — confidence marker — short problem description
 - If a finding survived as `uncertain`, append `— tentative` after the confidence marker
 - Include EVERY verified finding — no truncation
 
-#### MR mode
-After printing the numbered list, ask the user which findings to publish — **prefer `AskUserQuestion` with multi-select** so the user gets clickable checkboxes instead of having to type comma-separated numbers.
+#### MR mode — publish-selection flow is mandatory
+
+After printing the numbered list, CCR **MUST** call `AskUserQuestion` to collect the publish selection. This is not a preference, not a suggestion, and not a "prefer if convenient" — it is the **required first and only** path. `AskUserQuestion` is declared in your tool manifest on line 5 of this file. Your next tool call after the numbered report MUST be `AskUserQuestion`.
+
+Do **NOT** reason about whether the picker "feels heavy", whether the findings list is "short enough to type", or whether a text prompt is "simpler". Those judgments are explicitly overridden by this rule. Call the tool. Let the runtime decide if it works.
+
+The legacy text-based prompt still exists, but **only** as a fallback for the case where the actual `AskUserQuestion` tool call returned a runtime error (e.g. subagent context refused it). It is NEVER a valid first choice. See the Fallback section below.
 
 ##### Building the AskUserQuestion call
 
@@ -625,18 +630,25 @@ After printing the numbered list, ask the user which findings to publish — **p
 
 For each finding the user ticks in the picker, mark its number as "to publish". The union across all questions in all calls is the publish set. If the user picks no options in any question, treat that as "none for this batch" and continue to the next batch (or to Step 9 with the current set).
 
-##### Fallback when AskUserQuestion is unavailable
+##### Fallback — ONLY after a real `AskUserQuestion` runtime error
 
-`AskUserQuestion` only works when CCR runs in the **foreground**. If the tool call fails (e.g. CCR was launched as a background subagent), CCR MUST fall back to the legacy text-based prompt — do NOT loop on AskUserQuestion and do NOT silently skip the user. Print exactly:
+The legacy text prompt is allowed **only** if your actual `AskUserQuestion` tool call returned a runtime error. "Runtime error" means the tool was invoked and the system rejected it — not that you predicted it might be rejected, not that you judged it unnecessary, not that you decided the user would prefer typing.
 
-```
-Какие комментарии опубликовать? (номера через запятую, "all" или "none")
-```
+**Required order — no shortcuts:**
 
-Then **STOP and WAIT** for the user's reply. Parse the response:
-- `1,2,5` → post findings #1, #2, #5
-- `all` → post all findings
-- `none` → skip posting
+1. **Call `AskUserQuestion` first.** Unconditionally. Every time. For every MR review.
+2. If (and only if) that call returns a runtime error (e.g. background subagent context where the tool can't surface), print the fallback text prompt exactly:
+
+   ```
+   Какие комментарии опубликовать? (номера через запятую, "all" или "none")
+   ```
+
+3. Then **STOP and WAIT** for the user's reply. Parse the response:
+   - `1,2,5` → post findings #1, #2, #5
+   - `all` → post all findings
+   - `none` → skip posting
+
+Do NOT loop on `AskUserQuestion` after one failure. Do NOT silently skip the user. Do NOT print the fallback text without having first attempted `AskUserQuestion`.
 
 #### Local diff / file / package mode
 - Print the numbered findings list and stop
@@ -650,8 +662,11 @@ Then **STOP and WAIT** for the user's reply. Parse the response:
 - ❌ Unnumbered findings (user can't reference them)
 - ❌ Showing raw unverified candidates as if they were verified
 - ❌ Proceeding to Step 9 for non-MR modes
-- ❌ Falling back to the text prompt in foreground mode just because AskUserQuestion feels heavier — the picker exists for a reason
-- ❌ Truncating the AskUserQuestion options because there are more than 4 findings in a severity bucket — chain follow-up calls instead, every verified finding MUST be reachable
+- ❌ **Printing the text prompt in MR mode without first having called `AskUserQuestion` and received a runtime error** — the fallback is conditional on a real tool failure, not on your judgment
+- ❌ **Skipping `AskUserQuestion` because "findings list is short", "text is faster", or "picker is overkill"** — the rule is unconditional; call the tool every time
+- ❌ Falling back to the text prompt in foreground mode just because `AskUserQuestion` feels heavier — the picker exists for a reason
+- ❌ Truncating the `AskUserQuestion` options because there are more than 4 findings in a severity bucket — chain follow-up calls instead, every verified finding MUST be reachable
+- ❌ Predicting that `AskUserQuestion` "probably won't work here" without actually trying it — let the runtime return an error, then fall back
 
 ### Step 9: Post Approved Comments (MR Mode Only)
 
