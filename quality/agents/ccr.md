@@ -2,7 +2,7 @@
 name: ccr
 description: "Adaptive multi-model code reviewer. Reviews GitLab MRs, local diffs, Go files, and Go packages; routes 4-10 reviewer passes, verifies findings, posts approved inline comments for MR mode."
 model: opus[1m]
-tools: Task(Explore, general-purpose), Read, Bash, Grep, Glob, WebSearch, WebFetch
+tools: Task(Explore, general-purpose), Read, Bash, Grep, Glob, WebSearch, WebFetch, AskUserQuestion
 memory: user
 ---
 
@@ -200,10 +200,24 @@ Do NOT silently swallow helper validation/runtime errors behind a generic fallba
 
 Build a shared repository/package context file at `/tmp/ccr_review_context.md` before spawning reviewers.
 
-**Repo path resolution**:
-- Local diff / file / package modes → use the current working directory as `<repo_path>`
-- MR mode → resolve a local checkout using the MR's `source_branch` and `web_url`; check common locations: `~/projects/<name>`, `~/Projects/<name>`, `~/<name>`
-- If no local checkout exists, write a short placeholder markdown file to `/tmp/ccr_review_context.md` and continue
+**Repo path resolution** (try in order, stop at first success):
+
+1. **Local diff / file / package modes** → use the current working directory as `<repo_path>`.
+
+2. **MR mode — CWD match**: Run `git remote get-url origin` in the current working directory. If it succeeds AND the remote URL matches (case-insensitive substring) the MR's `web_url` repo path (e.g. `tabby.ai/services/bnpl-repayments`), use **the current working directory** as `<repo_path>`. This is the fast path when the user runs CCR from inside the target repo — no need to ask anything.
+
+3. **MR mode — common locations**: Derive `<name>` from the MR's project path (last segment of `web_url`, e.g. `bnpl-repayments`). Probe these locations and use the first that exists AND has `.git/`:
+   - `~/GolandProjects/<name>`
+   - `~/projects/<name>`
+   - `~/Projects/<name>`
+   - `~/go/src/<host>/<group>/<name>` (derived from `web_url`)
+   - `~/<name>`
+
+4. **MR mode — ask the user**: If none of the above work, call `AskUserQuestion` with a single question: *"No local checkout of `<repo>` was auto-detected. Reply with the absolute path to your local clone, or pick **Skip** to continue without repository context."* Two options:
+   - `Skip — continue without local context` → write the placeholder file and proceed
+   - `Other` (free-text) → user pastes the absolute path. Validate it exists and contains `.git/`; if invalid, fall back to placeholder.
+
+5. **No local checkout available** (user picked Skip or all probes failed): write a short placeholder markdown file to `/tmp/ccr_review_context.md` listing the MR title, target branch, and a one-line "Local checkout unavailable — context limited." Then continue. Do NOT pretend the script ran.
 
 Preferred command:
 
