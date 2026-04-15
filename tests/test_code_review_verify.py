@@ -57,6 +57,8 @@ class TestCodeReviewVerify(unittest.TestCase):
         self.assertEqual(result["contract_version"], "ccr.verification_result.v1")
         self.assertEqual([item["candidate_id"] for item in result["verified_findings"]], ["F1", "F2"])
         self.assertTrue(all(item["verdict"] == "uncertain" for item in result["verified_findings"]))
+        self.assertEqual(result["verified_findings"][0]["title"], "First")
+        self.assertIn("[dry-run] Add a concrete fix recommendation", result["verified_findings"][0]["suggested_fixes"][0])
         self.assertIn("Provider would be 'gemini'", result["verified_findings"][0]["evidence"])
         self.assertEqual(result["llm_invocation"]["provider"], "gemini")
         self.assertEqual(result["llm_invocation"]["schema_retries"], 0)
@@ -65,7 +67,7 @@ class TestCodeReviewVerify(unittest.TestCase):
         result = self.module._result_from_proxy_result(
             {
                 "provider": "codex",
-                "response": '{"verified_findings": [], "summary": "done"}',
+                "response": '{"verified_findings": [{"candidate_id": "F1", "verdict": "confirmed", "file": "internal/auth/jwt.go", "line": 12, "revised_message": "Tightened message.", "title": "Tight title", "problem": "Root cause.", "impact": "User-visible effect.", "suggested_fixes": ["Recommended fix."], "evidence": "Supported by the provided diff."}], "summary": "done"}',
                 "exit_code": 0,
                 "tokens": 77,
                 "duration_ms": 321,
@@ -77,6 +79,8 @@ class TestCodeReviewVerify(unittest.TestCase):
         )
 
         self.assertEqual(result["summary"], "done")
+        self.assertEqual(result["verified_findings"][0]["title"], "Tight title")
+        self.assertEqual(result["verified_findings"][0]["suggested_fixes"], ["Recommended fix."])
         self.assertEqual(result["llm_invocation"]["provider"], "codex")
         self.assertEqual(result["llm_invocation"]["tokens"], 77)
         self.assertEqual(result["llm_invocation"]["schema_retries"], 1)

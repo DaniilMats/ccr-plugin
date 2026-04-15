@@ -17,6 +17,15 @@
           "file": { "type": "string" },
           "line": { "type": "integer", "minimum": 1 },
           "revised_message": { "type": "string" },
+          "title": { "type": "string" },
+          "problem": { "type": "string" },
+          "impact": { "type": "string" },
+          "suggested_fixes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "maxItems": 2
+          },
           "evidence": { "type": "string" },
           "anchor_status": { "enum": ["diff", "file_context", "missing", "unknown"] },
           "evidence_sources": { "type": "array", "items": { "type": "string" } },

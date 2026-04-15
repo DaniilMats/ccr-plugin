@@ -25,6 +25,11 @@ For EACH candidate, return exactly one verdict:
 - Do NOT suggest additional personas or review angles
 - If the candidate points to the wrong line, correct the line
 - If the candidate wording is vague, rewrite it into a tighter user-facing message
+- Produce structured presentation fields for each candidate:
+  - `title`: short finding title without severity prefix
+  - `problem`: root-cause explanation grounded in the diff/context
+  - `impact`: concrete failure mode / user-visible effect
+  - `suggested_fixes`: 1-2 concise, concrete fixes sorted best-first
 - `evidence` must explain why the verdict is justified from the code shown
 - Prefer `rejected` over speculative `confirmed`
 - Prefer `uncertain` when the concern is plausible but under-evidenced
@@ -41,6 +46,13 @@ Respond with ONLY a JSON object matching this schema:
       "file": "path/to/file.go",
       "line": 42,
       "revised_message": "Tightened user-facing message",
+      "title": "Short finding title",
+      "problem": "Root-cause explanation grounded in the code shown",
+      "impact": "Concrete failure mode or user-visible effect",
+      "suggested_fixes": [
+        "Best fix using the actual identifiers from the diff",
+        "Optional alternative fix with trade-off if helpful"
+      ],
       "evidence": "Why the claim is supported or unsupported by the code"
     }
   ],

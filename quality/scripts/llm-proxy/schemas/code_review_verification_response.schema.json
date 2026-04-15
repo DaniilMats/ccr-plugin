@@ -30,6 +30,21 @@
           "revised_message": {
             "type": "string"
           },
+          "title": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "suggested_fixes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "maxItems": 2
+          },
           "evidence": {
             "type": "string"
           }

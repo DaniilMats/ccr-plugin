@@ -393,8 +393,9 @@ Use the verifier-adjusted file/line/message when posting or summarizing, and pre
 
 ## Comment Format
 
-When posting a finding as an MR comment, keep it concise and actionable:
-- one clear problem statement
-- short impact if needed
-- concrete fix direction
+When posting a finding as an MR comment, keep it concise and actionable. Prefer this deterministic structure:
+- `**BUG|WARNING|INFO** — short title.`
+- `**Problem**: root-cause explanation`
+- `**Impact**: concrete failure mode / user-visible effect`
+- `**Suggested fixes**:` with 1-2 concrete recommendations (best fix first)
 - no persona tags or internal CCR jargon

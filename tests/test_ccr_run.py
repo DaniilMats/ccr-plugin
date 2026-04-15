@@ -321,6 +321,10 @@ class TestCCRRun(unittest.TestCase):
                                 "file": "internal/auth/jwt.go",
                                 "line": 22,
                                 "revised_message": "Second finding.",
+                                "title": "Duplicate work on fetch path",
+                                "problem": "fetchData recomputes query_hash before GetTransactions is called.",
+                                "impact": "Each request does avoidable duplicate work on this path.",
+                                "suggested_fixes": ["Reuse the existing query_hash instead of hashing the same inputs twice."],
                                 "evidence": "Supported.",
                             },
                             {
@@ -329,6 +333,13 @@ class TestCCRRun(unittest.TestCase):
                                 "file": "internal/auth/jwt.go",
                                 "line": 12,
                                 "revised_message": "First finding.",
+                                "title": "Validation missing on return path",
+                                "problem": "The function returns token claims without validating the token first.",
+                                "impact": "Callers can observe unvalidated data on this branch.",
+                                "suggested_fixes": [
+                                    "Validate the token before returning the claims.",
+                                    "Thread the validated token result through this helper instead of re-reading raw state.",
+                                ],
                                 "evidence": "Supported.",
                             },
                         ]
@@ -353,8 +364,10 @@ class TestCCRRun(unittest.TestCase):
             self.assertEqual(merged[1]["anchor_status"], "diff")
             self.assertEqual(merged[1]["evidence_bundle"]["requirements_excerpt"], "Validate tokens before returning claims.")
             report = self.module._format_report(merged)
-            self.assertIn("1. [WARNING] internal/auth/jwt.go:22", report)
-            self.assertIn("2. [BUG] internal/auth/jwt.go:12", report)
+            self.assertIn("1. [WARNING] internal/auth/jwt.go:22 — 2/2 — Duplicate work on fetch path", report)
+            self.assertIn("Problem: fetchData recomputes query_hash before GetTransactions is called.", report)
+            self.assertIn("Suggested fixes:", report)
+            self.assertIn("2. [BUG] internal/auth/jwt.go:12 — 2/2 — Validation missing on return path", report)
 
     def test_merge_verified_findings_filters_uncertain_missing_and_dropped_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

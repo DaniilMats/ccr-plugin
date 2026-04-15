@@ -134,6 +134,13 @@ class TestCCRPostComments(unittest.TestCase):
                 "file": "internal/auth/jwt.go",
                 "line": 2,
                 "message": "Validate the token before returning.",
+                "title": "Token validation missing on return path",
+                "problem": "The updated path returns the token payload without validating it first.",
+                "impact": "Callers can observe or rely on unvalidated token data on this branch.",
+                "suggested_fixes": [
+                    "Validate the token before returning the payload on this path.",
+                    "If validation already happens elsewhere, thread the validated result through this helper instead of re-reading raw token state.",
+                ],
             },
             {
                 "finding_number": 2,
@@ -172,6 +179,11 @@ class TestCCRPostComments(unittest.TestCase):
             request_file = Path(prepared["approved_findings"][0]["payload_file"])
             self.assertTrue(request_file.is_file())
             request_payload = json.loads(request_file.read_text(encoding="utf-8"))
+            self.assertIn("**BUG** — Token validation missing on return path.", request_payload["body"])
+            self.assertIn("**Problem**: The updated path returns the token payload without validating it first.", request_payload["body"])
+            self.assertIn("**Impact**: Callers can observe or rely on unvalidated token data on this branch.", request_payload["body"])
+            self.assertIn("**Suggested fixes**:", request_payload["body"])
+            self.assertIn("1. **(Recommended)** Validate the token before returning the payload on this path.", request_payload["body"])
             self.assertIn("<!-- ccr:fingerprint=", request_payload["body"])
             self.assertEqual(request_payload["position"]["new_line"], 2)
             self.assertTrue(Path(manifest["posting_manifest_file"]).is_file())

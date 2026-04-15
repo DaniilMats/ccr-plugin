@@ -22,6 +22,7 @@ from urllib.parse import quote
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ccr_runtime.common import load_json_file, ratio, read_text, run_command, utc_now, write_json
+from ccr_runtime.finding_format import render_comment_body, structured_finding_fields
 
 
 _POSTING_APPROVAL_CONTRACT = "ccr.posting_approval.v1"
@@ -95,12 +96,12 @@ def _build_fingerprint(project: str, mr_iid: int | str, finding: dict[str, Any])
 
 
 def _build_comment_body(finding: dict[str, Any], *, fingerprint: str, run_id: str) -> str:
-    message = str(finding.get("message") or "").strip()
     candidate_id = str(finding.get("candidate_id") or "unknown")
     finding_number = int(finding.get("finding_number") or 0)
     metadata = f"<!-- ccr:fingerprint={fingerprint} run_id={run_id} finding={finding_number} candidate_id={candidate_id} -->"
-    if message:
-        return f"{message}\n\n{metadata}"
+    body = render_comment_body(finding).strip()
+    if body:
+        return f"{body}\n\n{metadata}"
     return metadata
 
 
@@ -538,6 +539,7 @@ def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None 
         line = int(finding.get("line") or 0)
         fingerprint = _build_fingerprint(project, mr_iid, finding)
         anchor = _build_anchor(diff_index, file_path, line, diff_refs)
+        sections = structured_finding_fields(finding)
         item = {
             "finding_number": number,
             "candidate_id": str(finding.get("candidate_id") or ""),
@@ -546,6 +548,10 @@ def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None 
             "file": file_path,
             "line": line,
             "message": str(finding.get("message") or ""),
+            "title": str(sections.get("title") or ""),
+            "problem": str(sections.get("problem") or ""),
+            "impact": str(sections.get("impact") or ""),
+            "suggested_fixes": list(sections.get("suggested_fixes") or []),
             "fingerprint": fingerprint,
         }
         if anchor is None:

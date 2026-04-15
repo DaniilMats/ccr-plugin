@@ -34,6 +34,7 @@ Notes:
 - `watch_cursor.json` is a run-scoped watcher cursor/state file used by `quality/scripts/ccr_watch.py` to suppress already-consumed progress updates during repeated polling or `--follow` sessions.
 - `verification_prepare.json` is a run-scoped inspection artifact that summarizes which candidates were prepared for verifier execution and how they were batched.
 - `review_prepare.json` is a deterministic pre-review context artifact emitted by `quality/scripts/ccr_review_prepare.py`; it summarizes conditional requirements, related code/test snippets, scenario dimensions, and verification questions without generating findings.
+- verification artifacts may include structured presentation fields (`title`, `problem`, `impact`, `suggested_fixes`) so local reports and posted MR comments can render consistent operator-friendly review notes.
 - reviewer result artifacts emitted by `quality/scripts/llm-proxy/code_review.py` may include a normalized `llm_invocation` object with provider/schema-retry telemetry.
 - verification result artifacts emitted by `quality/scripts/llm-proxy/code_review_verify.py` may include the same normalized `llm_invocation` object.
 - `reviewers.json` is a structured reviewers manifest emitted by `quality/scripts/ccr_run.py`; its pass entries and summary may include normalized LLM telemetry and provider aggregates.

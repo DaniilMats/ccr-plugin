@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ccr_runtime.common import write_text
+from ccr_runtime.finding_format import structured_finding_fields
 
 SEVERITY_ORDER = {"bug": 0, "warning": 1, "info": 2}
 REPORT_PERSONA_ORDER = ("requirements", "logic", "security", "concurrency", "performance")
@@ -51,9 +52,20 @@ def format_report(verified_findings: list[dict[str, Any]]) -> str:
             finding_number = int(item.get("finding_number") or 0)
             if finding_number <= 0:
                 finding_number = fallback_finding_number
+            sections = structured_finding_fields(item)
             lines.append(
-                f"{finding_number}. [{str(item['severity']).upper()}] {item['file']}:{item['line']} — {confidence} — {item['message']}"
+                f"{finding_number}. [{str(item['severity']).upper()}] {item['file']}:{item['line']} — {confidence} — {sections['title']}"
             )
+            lines.append(f"   Problem: {sections['problem']}")
+            lines.append(f"   Impact: {sections['impact']}")
+            fixes = list(sections.get("suggested_fixes") or [])
+            if fixes:
+                lines.append("   Suggested fixes:")
+                for index, fix in enumerate(fixes, start=1):
+                    if index == 1:
+                        lines.append(f"     {index}. (Recommended) {fix}")
+                    else:
+                        lines.append(f"     {index}. {fix}")
             if item.get("evidence"):
                 lines.append(f"   Evidence: {item['evidence']}")
             fallback_finding_number = max(fallback_finding_number, finding_number + 1)

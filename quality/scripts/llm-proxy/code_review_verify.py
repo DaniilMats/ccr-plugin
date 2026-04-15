@@ -119,13 +119,18 @@ def _build_verification_output(
 def _dry_run_result(payload: dict, provider: str) -> dict:
     verified_findings = []
     for candidate in payload.get("candidates", []):
+        message = candidate.get("message", "[dry-run] No message provided.")
         verified_findings.append(
             {
                 "candidate_id": candidate.get("candidate_id", "unknown"),
                 "verdict": "uncertain",
                 "file": candidate.get("file") or payload.get("file", "unknown"),
                 "line": candidate.get("line", 1),
-                "revised_message": candidate.get("message", "[dry-run] No message provided."),
+                "revised_message": message,
+                "title": str(message).strip().rstrip("."),
+                "problem": str(message),
+                "impact": "[dry-run] User-visible impact was not verified.",
+                "suggested_fixes": ["[dry-run] Add a concrete fix recommendation during live verification."],
                 "evidence": f"[dry-run] Verification skipped. Provider would be '{provider}'.",
             }
         )
