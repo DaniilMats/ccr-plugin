@@ -13,6 +13,7 @@ python3 -m py_compile \
   quality/scripts/ccr_run.py \
   quality/scripts/ccr_watch.py \
   quality/scripts/ccr_post_comments.py \
+  quality/scripts/ccr_consolidate.py \
   quality/scripts/repomap.py \
   quality/scripts/ccr_routing.py \
   quality/scripts/llm-proxy/code_review.py \
@@ -47,6 +48,80 @@ python3 quality/scripts/llm-proxy/review_context.py \
   --project-dir tests/fixtures/go_repo \
   --artifact-file tests/fixtures/go_repo/review_artifact.txt \
   --output-file "$TMP_DIR/review_context.md" > /dev/null
+
+echo "[smoke] consolidation helper"
+python3 - <<'PY' "$TMP_DIR/consolidate_input.reviewers.json" "$TMP_DIR/consolidate_input.route_plan.json" "$TMP_DIR/consolidate_input.static_analysis.json"
+import json, sys
+from pathlib import Path
+reviewers_path = Path(sys.argv[1])
+route_plan_path = Path(sys.argv[2])
+static_analysis_path = Path(sys.argv[3])
+reviewers_path.write_text(json.dumps([
+    {
+        "pass_name": "security_p1",
+        "persona": "security",
+        "provider": "codex",
+        "result": {
+            "contract_version": "ccr.reviewer_result.v1",
+            "findings": [
+                {
+                    "severity": "bug",
+                    "file": "internal/auth/jwt.go",
+                    "line": 12,
+                    "message": "`ValidateToken` skips JWT token expiry validation."
+                }
+            ],
+            "summary": "security summary"
+        }
+    },
+    {
+        "pass_name": "logic_p1",
+        "persona": "logic",
+        "provider": "gemini",
+        "result": {
+            "contract_version": "ccr.reviewer_result.v1",
+            "findings": [
+                {
+                    "severity": "warning",
+                    "file": "internal/auth/jwt.go",
+                    "line": 13,
+                    "message": "JWT token expiry validation is missing in ValidateToken."
+                }
+            ],
+            "summary": "logic summary"
+        }
+    }
+], indent=2) + "\n", encoding="utf-8")
+route_plan_path.write_text(json.dumps({"pass_counts": {"security": 3, "logic": 3}}, indent=2) + "\n", encoding="utf-8")
+static_analysis_path.write_text(json.dumps({
+    "go_vet": [],
+    "staticcheck": [],
+    "gosec": [
+        {
+            "tool": "gosec",
+            "file": "internal/auth/jwt.go",
+            "line": 12,
+            "message": "Token validation path does not enforce expiry checks.",
+            "code": "G999"
+        }
+    ]
+}, indent=2) + "\n", encoding="utf-8")
+PY
+python3 quality/scripts/ccr_consolidate.py \
+  --reviewer-results-file "$TMP_DIR/consolidate_input.reviewers.json" \
+  --route-plan-file "$TMP_DIR/consolidate_input.route_plan.json" \
+  --static-analysis-file "$TMP_DIR/consolidate_input.static_analysis.json" \
+  --output-file "$TMP_DIR/candidates.json" > "$TMP_DIR/candidates.stdout.json"
+python3 - <<'PY' "$TMP_DIR/candidates.stdout.json" "$TMP_DIR/candidates.json"
+import json, sys
+from pathlib import Path
+stdout_payload = json.loads(Path(sys.argv[1]).read_text())
+written_payload = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_payload["contract_version"] == "ccr.candidates_manifest.v1"
+assert written_payload["summary"]["candidate_count"] == 1
+assert written_payload["candidates"][0]["persona"] == "security"
+assert written_payload["candidates"][0]["supporting_personas"] == ["logic"]
+PY
 
 echo "[smoke] deterministic harness"
 python3 quality/scripts/ccr_run.py \

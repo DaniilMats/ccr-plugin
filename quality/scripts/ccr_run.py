@@ -38,6 +38,7 @@ from urllib.parse import quote, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from ccr_consolidate import CandidateRecord, build_candidates as consolidate_candidates
 from ccr_run_init import DEFAULT_BASE_DIR, _build_manifest, _build_run_id, _write_json
 from ccr_routing import RoutingInput, build_routing_plan
 
@@ -160,33 +161,6 @@ class ReviewerPassSpec:
     persona: str
     provider: str
     diff_kind: Literal["original", "shuffled"]
-
-
-@dataclass(frozen=True)
-class CandidateRecord:
-    candidate_id: str
-    persona: str
-    severity: str
-    file: str
-    line: int
-    message: str
-    reviewers: list[str]
-    consensus: str
-    evidence_sources: list[str]
-
-    def to_contract_dict(self) -> dict[str, Any]:
-        return {
-            "contract_version": "ccr.consolidated_candidate.v1",
-            "candidate_id": self.candidate_id,
-            "persona": self.persona,
-            "severity": self.severity,
-            "file": self.file,
-            "line": self.line,
-            "message": self.message,
-            "reviewers": self.reviewers,
-            "consensus": self.consensus,
-            "evidence_sources": self.evidence_sources,
-        }
 
 
 def _utc_now() -> str:
@@ -1644,59 +1618,6 @@ def _severity_rank(severity: str) -> int:
     return _SEVERITY_ORDER.get(severity, 99)
 
 
-def _message_key(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower())
-
-
-def _combine_messages(messages: list[str]) -> str:
-    unique: list[str] = []
-    seen: set[str] = set()
-    for message in messages:
-        normalized = _message_key(message)
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        unique.append(message.strip())
-    if not unique:
-        return "Reviewer reported an issue but did not provide details."
-    if len(unique) == 1:
-        return unique[0]
-    head = unique[0]
-    tail = "\nAdditional reviewer notes:\n" + "\n".join(f"- {item}" for item in unique[1:])
-    return head + tail
-
-
-def _find_static_analysis_evidence(static_analysis_payload: dict[str, Any], file_path: str, line: int) -> list[str]:
-    evidence: list[str] = ["diff_hunk"]
-    for tool_key in ("go_vet", "staticcheck", "gosec"):
-        findings = static_analysis_payload.get(tool_key)
-        if not isinstance(findings, list):
-            continue
-        if any(
-            isinstance(finding, dict)
-            and finding.get("file") == file_path
-            and abs(int(finding.get("line", 0) or 0) - line) <= 3
-            for finding in findings
-        ):
-            evidence.append(tool_key)
-    return _dedupe_preserve_order(evidence)
-
-
-def _cluster_persona_findings(items: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    clusters: list[list[dict[str, Any]]] = []
-    for item in sorted(items, key=lambda value: (value["file"], int(value["line"]), _severity_rank(value["severity"]), value["pass_name"])):
-        assigned = False
-        for cluster in clusters:
-            head = cluster[0]
-            if item["file"] == head["file"] and abs(int(item["line"]) - int(head["line"])) <= 3:
-                cluster.append(item)
-                assigned = True
-                break
-        if not assigned:
-            clusters.append([item])
-    return clusters
-
-
 def _build_candidates(
     reviewer_results: list[dict[str, Any]],
     *,
@@ -1704,67 +1625,11 @@ def _build_candidates(
     route_plan: dict[str, Any],
     static_analysis_payload: dict[str, Any],
 ) -> tuple[list[CandidateRecord], dict[str, Any]]:
-    pass_counts = route_plan.get("pass_counts") if isinstance(route_plan.get("pass_counts"), dict) else {}
-    flattened: list[dict[str, Any]] = []
-    for review in reviewer_results:
-        output = review.get("result") if isinstance(review.get("result"), dict) else {}
-        findings = output.get("findings") if isinstance(output.get("findings"), list) else []
-        for finding in findings:
-            if not isinstance(finding, dict):
-                continue
-            file_path = str(finding.get("file") or "").strip()
-            line = int(finding.get("line") or 0)
-            message = str(finding.get("message") or "").strip()
-            severity = str(finding.get("severity") or "info").strip().lower()
-            if not file_path or line < 1 or not message:
-                continue
-            if severity not in _SEVERITY_ORDER:
-                severity = "info"
-            flattened.append(
-                {
-                    "pass_name": review["pass_name"],
-                    "persona": review["persona"],
-                    "provider": review["provider"],
-                    "file": file_path,
-                    "line": line,
-                    "message": message,
-                    "severity": severity,
-                }
-            )
-
-    grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    for finding in flattened:
-        grouped[(finding["persona"], finding["file"])] .append(finding)
-
-    candidates: list[CandidateRecord] = []
-    next_id = 1
-    for (persona, _file_path), findings in sorted(grouped.items(), key=lambda item: item[0]):
-        for cluster in _cluster_persona_findings(findings):
-            messages = [item["message"] for item in cluster]
-            reviewers = sorted({item["pass_name"] for item in cluster})
-            severity = min((item["severity"] for item in cluster), key=_severity_rank)
-            line = min(int(item["line"]) for item in cluster)
-            file_path = cluster[0]["file"]
-            available_persona_passes = int(pass_counts.get(persona, 0) or 0) or len(reviewers)
-            consensus = f"{len(reviewers)}/{available_persona_passes}"
-            candidate = CandidateRecord(
-                candidate_id=f"F{next_id}",
-                persona=persona,
-                severity=severity,
-                file=file_path,
-                line=line,
-                message=_combine_messages(messages),
-                reviewers=reviewers,
-                consensus=consensus,
-                evidence_sources=_find_static_analysis_evidence(static_analysis_payload, file_path, line),
-            )
-            candidates.append(candidate)
-            next_id += 1
-
-    candidates_summary = {
-        "candidate_count": len(candidates),
-        "source_finding_count": len(flattened),
-    }
+    candidates, candidates_summary = consolidate_candidates(
+        reviewer_results,
+        route_plan=route_plan,
+        static_analysis_payload=static_analysis_payload,
+    )
     candidates_payload = {
         "contract_version": "ccr.candidates_manifest.v1",
         "candidates": [candidate.to_contract_dict() for candidate in candidates],
@@ -1898,6 +1763,24 @@ def _write_verification_batches(
                         "file": candidate.file,
                         "line": candidate.line,
                         "message": candidate.message,
+                        "persona": candidate.persona,
+                        "severity": candidate.severity,
+                        "reviewers": list(candidate.reviewers),
+                        "consensus": candidate.consensus,
+                        "symbol": candidate.symbol,
+                        "anchor_status": candidate.anchor_status,
+                        "evidence_sources": list(candidate.evidence_sources),
+                        "source_findings": [dict(item) for item in candidate.source_findings],
+                        "evidence_bundle": {
+                            "diff_hunk": candidate.evidence_bundle.get("diff_hunk"),
+                            "file_context": candidate.evidence_bundle.get("file_context"),
+                            "requirements_excerpt": candidate.evidence_bundle.get("requirements_excerpt"),
+                            "static_analysis": [dict(item) for item in candidate.evidence_bundle.get("static_analysis", [])],
+                        },
+                        "prefilter": {
+                            "ready_for_verification": bool(candidate.prefilter.get("ready_for_verification", True)),
+                            "drop_reasons": list(candidate.prefilter.get("drop_reasons", [])),
+                        },
                     }
                     for candidate in chunk
                 ],
@@ -2031,10 +1914,20 @@ def _merge_verified_findings(
                     "message": str(finding.get("revised_message") or candidate.message),
                     "evidence": str(finding.get("evidence") or ""),
                     "verdict": verdict,
-                    "reviewers": candidate.reviewers,
+                    "reviewers": list(candidate.reviewers),
                     "consensus": candidate.consensus,
-                    "evidence_sources": candidate.evidence_sources,
+                    "evidence_sources": list(candidate.evidence_sources),
                     "tentative": verdict == "uncertain",
+                    "support_count": candidate.support_count,
+                    "available_pass_count": candidate.available_pass_count,
+                    "anchor_status": str(finding.get("anchor_status") or candidate.anchor_status),
+                    "evidence_bundle": {
+                        "diff_hunk": candidate.evidence_bundle.get("diff_hunk"),
+                        "file_context": candidate.evidence_bundle.get("file_context"),
+                        "requirements_excerpt": candidate.evidence_bundle.get("requirements_excerpt"),
+                        "static_analysis": [dict(item) for item in candidate.evidence_bundle.get("static_analysis", [])],
+                    },
+                    "prefilter_status": "ready" if bool(candidate.prefilter.get("ready_for_verification", True)) else "dropped",
                 }
             )
 
