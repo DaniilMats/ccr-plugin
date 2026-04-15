@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ccr_consolidate import CandidateRecord, build_candidates as consolidate_candidates
 from ccr_run_init import DEFAULT_BASE_DIR, _build_manifest, _build_run_id, _write_json
 from ccr_routing import RoutingInput, build_routing_plan
+from ccr_verify_prepare import prepare_verification_artifacts
 
 
 _HERE = Path(__file__).resolve().parent
@@ -1639,165 +1640,6 @@ def _build_candidates(
     return candidates, candidates_summary
 
 
-def _extract_diff_blocks(diff_text: str) -> dict[str, str]:
-    blocks: dict[str, str] = {}
-    current_file: str | None = None
-    current_lines: list[str] = []
-    for raw_line in diff_text.splitlines(keepends=True):
-        header_match = _DIFF_HEADER_RE.match(raw_line.rstrip("\n"))
-        if header_match:
-            if current_file is not None:
-                blocks[current_file] = "".join(current_lines).strip()
-            a_path, b_path = header_match.groups()
-            current_file = b_path if b_path != "/dev/null" else a_path
-            current_lines = [raw_line]
-            continue
-        current_lines.append(raw_line)
-    if current_file is not None:
-        blocks[current_file] = "".join(current_lines).strip()
-    return blocks
-
-
-def _extract_file_context(project_dir: Path | None, rel_path: str, target_lines: list[int], radius: int = 20) -> str:
-    if project_dir is None:
-        return "Local checkout unavailable."
-    path = project_dir / rel_path
-    if not path.is_file():
-        return "Local file unavailable in this checkout."
-    lines = _read_text(path).splitlines()
-    if not lines:
-        return "(empty file)"
-    start = max(1, min(target_lines) - radius)
-    end = min(len(lines), max(target_lines) + radius)
-    snippet = []
-    for line_no in range(start, end + 1):
-        snippet.append(f"{line_no:4d}: {lines[line_no - 1]}")
-    return "\n".join(snippet)
-
-
-def _prepare_candidate_for_verification(candidate: CandidateRecord, *, ready_for_verification: bool, drop_reasons: list[str] | None = None) -> dict[str, Any]:
-    payload = candidate.to_contract_dict()
-    payload["ready_for_verification"] = ready_for_verification
-    payload["drop_reasons"] = list(drop_reasons or [])
-    return payload
-
-
-
-def _write_verification_prepare(
-    manifest: dict[str, Any],
-    *,
-    candidates: list[CandidateRecord],
-    batches: list[dict[str, Any]],
-    dropped_candidates: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    ready_candidates = [
-        _prepare_candidate_for_verification(candidate, ready_for_verification=True)
-        for candidate in candidates
-    ]
-    dropped = list(dropped_candidates or [])
-    payload = {
-        "contract_version": "ccr.verification_prepare.v1",
-        "prepared_at": _utc_now(),
-        "ready_candidates": ready_candidates,
-        "dropped_candidates": dropped,
-        "batches": [
-            {
-                "batch_id": batch["batch_id"],
-                "batch_file": batch["batch_file"],
-                "file": batch.get("payload", {}).get("file") if isinstance(batch.get("payload"), dict) else None,
-                "candidate_ids": [
-                    str(item.get("candidate_id") or "")
-                    for item in (batch.get("payload", {}).get("candidates") if isinstance(batch.get("payload"), dict) else [])
-                    if isinstance(item, dict) and item.get("candidate_id")
-                ],
-                "candidate_count": len(
-                    [
-                        item
-                        for item in (batch.get("payload", {}).get("candidates") if isinstance(batch.get("payload"), dict) else [])
-                        if isinstance(item, dict)
-                    ]
-                ),
-            }
-            for batch in batches
-        ],
-        "summary": {
-            "candidate_count": len(candidates) + len(dropped),
-            "ready_count": len(ready_candidates),
-            "dropped_count": len(dropped),
-            "batch_count": len(batches),
-        },
-    }
-    _write_json(Path(manifest["verification_prepare_file"]), payload)
-    return payload
-
-
-
-def _write_verification_batches(
-    manifest: dict[str, Any],
-    *,
-    candidates: list[CandidateRecord],
-    artifact_text: str,
-    project_dir: Path | None,
-    requirements_text: str,
-) -> list[dict[str, Any]]:
-    diff_blocks = _extract_diff_blocks(artifact_text)
-    grouped_by_file: dict[str, list[CandidateRecord]] = defaultdict(list)
-    for candidate in candidates:
-        grouped_by_file[candidate.file].append(candidate)
-
-    batches: list[dict[str, Any]] = []
-    batch_index = 1
-    for file_path in sorted(grouped_by_file):
-        file_candidates = grouped_by_file[file_path]
-        for offset in range(0, len(file_candidates), 5):
-            chunk = file_candidates[offset : offset + 5]
-            batch_payload = {
-                "contract_version": "ccr.verification_batch.v1",
-                "file": file_path,
-                "diff_hunk": diff_blocks.get(file_path, ""),
-                "file_context": _extract_file_context(project_dir, file_path, [candidate.line for candidate in chunk]),
-                "requirements": requirements_text,
-                "candidates": [
-                    {
-                        "candidate_id": candidate.candidate_id,
-                        "file": candidate.file,
-                        "line": candidate.line,
-                        "message": candidate.message,
-                        "persona": candidate.persona,
-                        "severity": candidate.severity,
-                        "reviewers": list(candidate.reviewers),
-                        "consensus": candidate.consensus,
-                        "symbol": candidate.symbol,
-                        "anchor_status": candidate.anchor_status,
-                        "evidence_sources": list(candidate.evidence_sources),
-                        "source_findings": [dict(item) for item in candidate.source_findings],
-                        "evidence_bundle": {
-                            "diff_hunk": candidate.evidence_bundle.get("diff_hunk"),
-                            "file_context": candidate.evidence_bundle.get("file_context"),
-                            "requirements_excerpt": candidate.evidence_bundle.get("requirements_excerpt"),
-                            "static_analysis": [dict(item) for item in candidate.evidence_bundle.get("static_analysis", [])],
-                        },
-                        "prefilter": {
-                            "ready_for_verification": bool(candidate.prefilter.get("ready_for_verification", True)),
-                            "drop_reasons": list(candidate.prefilter.get("drop_reasons", [])),
-                        },
-                    }
-                    for candidate in chunk
-                ],
-            }
-            batch_path = Path(manifest["verify_batch_dir"]) / f"verify_batch_{batch_index:03d}.json"
-            _write_json(batch_path, batch_payload)
-            batches.append(
-                {
-                    "batch_id": f"B{batch_index}",
-                    "batch_file": str(batch_path),
-                    "payload": batch_payload,
-                }
-            )
-            batch_index += 1
-    return batches
-
-
 def _run_single_verification_batch(
     batch: dict[str, Any],
     *,
@@ -1902,7 +1744,10 @@ def _merge_verified_findings(
             if verdict == "rejected":
                 continue
             support_count, _ = _parse_consensus_support(candidate.consensus)
-            if verdict == "uncertain" and support_count < 2:
+            support_count = int(candidate.support_count or support_count)
+            if not bool(candidate.prefilter.get("ready_for_verification", True)):
+                continue
+            if verdict == "uncertain" and (support_count < 2 or candidate.anchor_status == "missing"):
                 continue
             merged.append(
                 {
@@ -1967,7 +1812,24 @@ def _run_verification(
     verifier_timeout_sec: int,
     max_verifier_workers: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    if not candidates:
+    prepared = prepare_verification_artifacts(
+        candidates,
+        artifact_text=artifact_text,
+        project_dir=project_dir,
+        requirements_text=requirements_text,
+        verify_batch_dir=Path(manifest["verify_batch_dir"]),
+        output_file=Path(manifest["verification_prepare_file"]),
+    )
+    prepared_candidates = prepared["prepared_candidates"]
+    ready_candidates = prepared["ready_candidates"]
+    batches = prepared["batches"]
+
+    candidates_payload = _load_json_file(Path(manifest["candidates_file"]), default={})
+    if isinstance(candidates_payload, dict):
+        candidates_payload["candidates"] = [candidate.to_contract_dict() for candidate in prepared_candidates]
+        _write_json(Path(manifest["candidates_file"]), candidates_payload)
+
+    if not ready_candidates:
         summary = {
             "verified_count": 0,
             "batch_count": 0,
@@ -1977,11 +1839,6 @@ def _run_verification(
             "timeout_sec": verifier_timeout_sec,
             "estimated_max_duration_sec": 0,
         }
-        _write_verification_prepare(
-            manifest,
-            candidates=[],
-            batches=[],
-        )
         payload = {
             "contract_version": "ccr.verified_findings.v1",
             "verified_findings": [],
@@ -1990,19 +1847,6 @@ def _run_verification(
         }
         _write_json(Path(manifest["verified_findings_file"]), payload)
         return [], summary
-
-    batches = _write_verification_batches(
-        manifest,
-        candidates=candidates,
-        artifact_text=artifact_text,
-        project_dir=project_dir,
-        requirements_text=requirements_text,
-    )
-    _write_verification_prepare(
-        manifest,
-        candidates=candidates,
-        batches=batches,
-    )
 
     worker_count = _resolve_worker_count(max_verifier_workers, len(batches), auto_cap=8)
     estimated_max_duration_sec = _estimate_parallel_stage_duration(len(batches), worker_count, verifier_timeout_sec)
@@ -2033,7 +1877,7 @@ def _run_verification(
             observer.verification_batch_finished(result)
 
     results.sort(key=lambda item: item["batch_id"])
-    verified_findings = _merge_verified_findings(manifest, candidates=candidates, verification_results=results)
+    verified_findings = _merge_verified_findings(manifest, candidates=prepared_candidates, verification_results=results)
     verification_summary = {
         "verified_count": len(verified_findings),
         "batch_count": len(results),

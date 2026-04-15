@@ -14,6 +14,7 @@ python3 -m py_compile \
   quality/scripts/ccr_watch.py \
   quality/scripts/ccr_post_comments.py \
   quality/scripts/ccr_consolidate.py \
+  quality/scripts/ccr_verify_prepare.py \
   quality/scripts/repomap.py \
   quality/scripts/ccr_routing.py \
   quality/scripts/llm-proxy/code_review.py \
@@ -121,6 +122,27 @@ assert stdout_payload["contract_version"] == "ccr.candidates_manifest.v1"
 assert written_payload["summary"]["candidate_count"] == 1
 assert written_payload["candidates"][0]["persona"] == "security"
 assert written_payload["candidates"][0]["supporting_personas"] == ["logic"]
+PY
+
+echo "[smoke] verification prepare helper"
+printf '' > "$TMP_DIR/requirements.txt"
+python3 quality/scripts/ccr_verify_prepare.py \
+  --candidates-file "$TMP_DIR/candidates.json" \
+  --artifact-file tests/fixtures/go_repo/review_artifact.txt \
+  --project-dir tests/fixtures/go_repo \
+  --requirements-file "$TMP_DIR/requirements.txt" \
+  --verify-batch-dir "$TMP_DIR/verify_batches" \
+  --output-file "$TMP_DIR/verification_prepare.json" > "$TMP_DIR/verification_prepare.stdout.json"
+python3 - <<'PY' "$TMP_DIR/verification_prepare.stdout.json" "$TMP_DIR/verification_prepare.json"
+import json, sys
+from pathlib import Path
+stdout_payload = json.loads(Path(sys.argv[1]).read_text())
+written_payload = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_payload["contract_version"] == "ccr.verification_prepare.v1"
+assert written_payload["summary"]["ready_count"] == 1
+assert written_payload["summary"]["batch_count"] == 1
+assert written_payload["ready_candidates"][0]["anchor_status"] == "file_context"
+assert Path(written_payload["batches"][0]["batch_file"]).is_file()
 PY
 
 echo "[smoke] deterministic harness"

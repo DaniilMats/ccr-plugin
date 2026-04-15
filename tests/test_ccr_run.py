@@ -135,7 +135,17 @@ class TestCCRRun(unittest.TestCase):
                     message="Second finding.",
                     reviewers=["logic_p1", "logic_p2"],
                     consensus="2/2",
-                    evidence_sources=["diff_hunk"],
+                    evidence_sources=["diff_hunk", "file_context"],
+                    support_count=2,
+                    available_pass_count=2,
+                    anchor_status="file_context",
+                    prefilter={"ready_for_verification": True, "drop_reasons": []},
+                    evidence_bundle={
+                        "diff_hunk": None,
+                        "file_context": "context for second finding",
+                        "requirements_excerpt": None,
+                        "static_analysis": [],
+                    },
                 ),
                 self.module.CandidateRecord(
                     candidate_id="F1",
@@ -146,7 +156,17 @@ class TestCCRRun(unittest.TestCase):
                     message="First finding.",
                     reviewers=["security_p1", "security_p2"],
                     consensus="2/2",
-                    evidence_sources=["diff_hunk"],
+                    evidence_sources=["diff_hunk", "gosec"],
+                    support_count=2,
+                    available_pass_count=2,
+                    anchor_status="diff",
+                    prefilter={"ready_for_verification": True, "drop_reasons": []},
+                    evidence_bundle={
+                        "diff_hunk": "@@ -10,1 +10,2 @@",
+                        "file_context": "context for first finding",
+                        "requirements_excerpt": "Validate tokens before returning claims.",
+                        "static_analysis": [{"tool": "gosec", "line": 12, "message": "Example."}],
+                    },
                 ),
             ]
             verification_results = [
@@ -186,6 +206,12 @@ class TestCCRRun(unittest.TestCase):
             written = json.loads(Path(manifest["verified_findings_file"]).read_text(encoding="utf-8"))
             self.assertEqual(written["verified_findings"][0]["finding_number"], 1)
             self.assertEqual(written["verified_findings"][1]["finding_number"], 2)
+            self.assertEqual(merged[0]["support_count"], 2)
+            self.assertEqual(merged[0]["anchor_status"], "file_context")
+            self.assertEqual(merged[0]["prefilter_status"], "ready")
+            self.assertIn("file_context", merged[0]["evidence_sources"])
+            self.assertEqual(merged[1]["anchor_status"], "diff")
+            self.assertEqual(merged[1]["evidence_bundle"]["requirements_excerpt"], "Validate tokens before returning claims.")
             report = self.module._format_report(merged)
             self.assertIn("1. [WARNING] internal/auth/jwt.go:22", report)
             self.assertIn("2. [BUG] internal/auth/jwt.go:12", report)
