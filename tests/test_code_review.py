@@ -61,22 +61,65 @@ class TestCodeReview(unittest.TestCase):
     def test_extract_review_output_handles_code_fences_and_invalid_json(self) -> None:
         parsed = self.module._extract_review_output(
             {
+                "provider": "codex",
                 "response": "```json\n{\"findings\": [], \"summary\": \"ok\"}\n```",
                 "exit_code": 0,
+                "tokens": 123,
+                "schema_valid": True,
+                "schema_retries": 0,
             }
         )
         fallback = self.module._extract_review_output(
             {
+                "provider": "codex",
                 "response": "not-json",
                 "exit_code": 0,
+                "tokens": 0,
+                "schema_valid": False,
+                "schema_retries": 2,
+                "schema_violations": ["missing required field 'summary'"],
             }
         )
 
         self.assertEqual(parsed["contract_version"], "ccr.reviewer_result.v1")
         self.assertEqual(parsed["summary"], "ok")
         self.assertEqual(parsed["raw_response"], "```json\n{\"findings\": [], \"summary\": \"ok\"}\n```")
+        self.assertEqual(parsed["llm_invocation"]["provider"], "codex")
+        self.assertEqual(parsed["llm_invocation"]["tokens"], 123)
         self.assertEqual(fallback["findings"], [])
         self.assertIn("not valid JSON", fallback["summary"])
+        self.assertEqual(fallback["llm_invocation"]["schema_retries"], 2)
+        self.assertEqual(fallback["llm_invocation"]["schema_violations"], ["missing required field 'summary'"])
+
+    def test_extract_review_output_preserves_provider_failure_telemetry(self) -> None:
+        result = self.module._extract_review_output(
+            {
+                "provider": "gemini",
+                "response": "",
+                "exit_code": 1,
+                "error": "provider crashed",
+                "timed_out": False,
+                "duration_ms": 250,
+                "tokens": 0,
+                "schema_valid": True,
+                "schema_retries": 0,
+            }
+        )
+
+        self.assertEqual(result["findings"], [])
+        self.assertIn("provider crashed", result["summary"])
+        self.assertEqual(result["llm_invocation"]["provider"], "gemini")
+        self.assertEqual(result["llm_invocation"]["exit_code"], 1)
+        self.assertEqual(result["llm_invocation"]["duration_ms"], 250)
+
+    def test_dry_run_review_output_includes_llm_invocation(self) -> None:
+        result = self.module._dry_run_review_output("claude")
+
+        self.assertEqual(result["contract_version"], "ccr.reviewer_result.v1")
+        self.assertEqual(result["summary"], "[dry-run] Review skipped.")
+        self.assertEqual(result["llm_invocation"]["provider"], "claude")
+        self.assertEqual(result["llm_invocation"]["tokens"], 0)
+        self.assertEqual(result["llm_invocation"]["schema_retries"], 0)
 
 
 if __name__ == "__main__":

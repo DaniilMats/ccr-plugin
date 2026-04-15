@@ -25,6 +25,8 @@ As of 2026-04-15:
 - Phase 1.3.1 is complete: clearer icon-prefixed watcher lines and stricter no-filler monitor guidance
 - Phase 2 is complete: deterministic `ccr_post_comments.py`, explicit `posting_approval.json` / `posting_manifest.json` / `posting_results.json`, fingerprint-based idempotency, and validated `DiffNote` posting flow
 - Phase 3 is complete: deterministic `ccr_consolidate.py` + `ccr_verify_prepare.py`, richer candidate/verified-finding contracts, machine-readable evidence bundles, anchor status, deterministic prefilters, and structured verification-prep artifacts
+- Phase 4 Step 1 is complete: `llm_invocation` / `reviewers_manifest` / `run_metrics` contracts plus `run_metrics_file` surfaced across manifest/launch/summary/watch artifacts
+- Phase 4 Step 2 is complete: reviewer/verifier wrapper outputs now carry normalized `llm_invocation` telemetry with provider, tokens, duration, thread, and schema-retry metadata
 - Detailed Phase 2 implementation plan: `quality/agents/ccr-phase2-implementation-plan.md`
 - Detailed Phase 3 implementation plan: `quality/agents/ccr-phase3-implementation-plan.md`
 - Detailed Phase 4 implementation plan (non-CI rollout): `quality/agents/ccr-phase4-implementation-plan.md`

@@ -58,6 +58,50 @@ class TestCodeReviewVerify(unittest.TestCase):
         self.assertEqual([item["candidate_id"] for item in result["verified_findings"]], ["F1", "F2"])
         self.assertTrue(all(item["verdict"] == "uncertain" for item in result["verified_findings"]))
         self.assertIn("Provider would be 'gemini'", result["verified_findings"][0]["evidence"])
+        self.assertEqual(result["llm_invocation"]["provider"], "gemini")
+        self.assertEqual(result["llm_invocation"]["schema_retries"], 0)
+
+    def test_result_from_proxy_result_preserves_schema_retry_visibility(self) -> None:
+        result = self.module._result_from_proxy_result(
+            {
+                "provider": "codex",
+                "response": '{"verified_findings": [], "summary": "done"}',
+                "exit_code": 0,
+                "tokens": 77,
+                "duration_ms": 321,
+                "schema_valid": True,
+                "schema_retries": 1,
+                "schema_violations": ["missing required field 'summary'"]
+            },
+            provider="codex",
+        )
+
+        self.assertEqual(result["summary"], "done")
+        self.assertEqual(result["llm_invocation"]["provider"], "codex")
+        self.assertEqual(result["llm_invocation"]["tokens"], 77)
+        self.assertEqual(result["llm_invocation"]["schema_retries"], 1)
+        self.assertEqual(result["llm_invocation"]["schema_violations"], ["missing required field 'summary'"])
+
+    def test_result_from_proxy_result_handles_provider_failure(self) -> None:
+        result = self.module._result_from_proxy_result(
+            {
+                "provider": "claude",
+                "response": "",
+                "exit_code": 1,
+                "error": "timeout",
+                "timed_out": True,
+                "duration_ms": 9000,
+                "tokens": 0,
+                "schema_valid": True,
+                "schema_retries": 0,
+            },
+            provider="claude",
+        )
+
+        self.assertEqual(result["verified_findings"], [])
+        self.assertIn("Verification failed: timeout", result["summary"])
+        self.assertTrue(result["llm_invocation"]["timed_out"])
+        self.assertEqual(result["llm_invocation"]["duration_ms"], 9000)
 
 
 if __name__ == "__main__":

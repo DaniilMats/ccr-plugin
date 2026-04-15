@@ -26,7 +26,7 @@ import json
 import subprocess
 from typing import Optional
 
-from llm_proxy import run_proxy
+from llm_proxy import build_llm_invocation, run_proxy
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -320,45 +320,80 @@ def _build_prompt(
 
 # ── Output post-processing ────────────────────────────────────────────────────
 
-def _extract_review_output(proxy_result: dict) -> dict:
+def _make_review_output(
+    *,
+    findings: list[dict],
+    summary: str,
+    raw_response: str,
+    llm_invocation: dict | None = None,
+) -> dict:
+    payload = {
+        "contract_version": "ccr.reviewer_result.v1",
+        "findings": findings,
+        "summary": summary,
+        "raw_response": raw_response,
+    }
+    if llm_invocation is not None:
+        payload["llm_invocation"] = llm_invocation
+    return payload
+
+
+
+def _dry_run_review_output(provider: str) -> dict:
+    return _make_review_output(
+        findings=[],
+        summary="[dry-run] Review skipped.",
+        raw_response="[dry-run]",
+        llm_invocation=build_llm_invocation({"provider": provider}, provider=provider),
+    )
+
+
+
+def _extract_review_output(proxy_result: dict, *, provider: Optional[str] = None) -> dict:
     """
     Parse the LLM response into the code review output format:
-    {"findings": [...], "summary": "...", "raw_response": "..."}
+    {"findings": [...], "summary": "...", "raw_response": "...", "llm_invocation": {...}}
     """
-    raw = proxy_result.get("response", "")
+    raw = str(proxy_result.get("response") or "")
+    llm_invocation = build_llm_invocation(proxy_result, provider=provider)
 
-    # If dry-run or error, return a structured placeholder
     if proxy_result.get("exit_code", 0) != 0 or proxy_result.get("error"):
-        return {
-            "contract_version": "ccr.reviewer_result.v1",
-            "findings": [],
-            "summary": "Review could not be completed: {}".format(
+        return _make_review_output(
+            findings=[],
+            summary="Review could not be completed: {}".format(
                 proxy_result.get("error", "unknown error")
             ),
-            "raw_response": raw,
-        }
+            raw_response=raw,
+            llm_invocation=llm_invocation,
+        )
 
-    # Try to parse JSON from the raw response
     try:
-        # Strip possible markdown code fences
         text = raw.strip()
         if text.startswith("```"):
             lines = text.splitlines()
-            # Remove first and last fence lines
             lines = [l for l in lines if not l.strip().startswith("```")]
             text = "\n".join(lines).strip()
 
         parsed = json.loads(text)
+        if not isinstance(parsed, dict):
+            raise ValueError("review response must decode to a JSON object")
+        findings = parsed.get("findings") if isinstance(parsed.get("findings"), list) else []
+        summary = parsed.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            summary = "Review response did not include a valid summary. See raw_response for details."
         parsed["contract_version"] = "ccr.reviewer_result.v1"
+        parsed["findings"] = findings
+        parsed["summary"] = summary
         parsed["raw_response"] = raw
+        parsed["llm_invocation"] = llm_invocation
         return parsed
     except (json.JSONDecodeError, ValueError):
-        return {
-            "contract_version": "ccr.reviewer_result.v1",
-            "findings": [],
-            "summary": "Review response was not valid JSON. See raw_response for details.",
-            "raw_response": raw,
-        }
+        return _make_review_output(
+            findings=[],
+            summary="Review response was not valid JSON. See raw_response for details.",
+            raw_response=raw,
+            llm_invocation=llm_invocation,
+        )
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -506,11 +541,11 @@ def main() -> None:
         try:
             diff = _load_text(args.diff_file).strip() or "(no changes)"
         except OSError as exc:
-            error_out = {
-                "findings": [],
-                "summary": "Failed to read diff file: {}".format(exc),
-                "raw_response": "",
-            }
+            error_out = _make_review_output(
+                findings=[],
+                summary="Failed to read diff file: {}".format(exc),
+                raw_response="",
+            )
             print(json.dumps(error_out, indent=2))
             sys.exit(1)
     elif args.dry_run:
@@ -519,11 +554,11 @@ def main() -> None:
         try:
             diff = _generate_diff(args.scope)
         except (ValueError, RuntimeError) as exc:
-            error_out = {
-                "findings": [],
-                "summary": "Failed to generate diff: {}".format(exc),
-                "raw_response": "",
-            }
+            error_out = _make_review_output(
+                findings=[],
+                summary="Failed to generate diff: {}".format(exc),
+                raw_response="",
+            )
             print(json.dumps(error_out, indent=2))
             sys.exit(1)
 
@@ -533,11 +568,11 @@ def main() -> None:
             with open(args.artifact_output, "w", encoding="utf-8") as f:
                 f.write(diff)
         except OSError as exc:
-            error_out = {
-                "findings": [],
-                "summary": "Failed to write review artifact: {}".format(exc),
-                "raw_response": "",
-            }
+            error_out = _make_review_output(
+                findings=[],
+                summary="Failed to write review artifact: {}".format(exc),
+                raw_response="",
+            )
             print(json.dumps(error_out, indent=2))
             sys.exit(1)
 
@@ -601,12 +636,7 @@ def main() -> None:
     )
 
     if args.dry_run:
-        review_output = {
-            "contract_version": "ccr.reviewer_result.v1",
-            "findings": [],
-            "summary": "[dry-run] Review skipped.",
-            "raw_response": "[dry-run]",
-        }
+        review_output = _dry_run_review_output(args.provider)
         out_json = json.dumps(review_output, indent=2)
         print(out_json)
         if args.output_file:
@@ -631,7 +661,7 @@ def main() -> None:
     )
 
     # Step 7: Extract and structure review output
-    review_output = _extract_review_output(proxy_result)
+    review_output = _extract_review_output(proxy_result, provider=args.provider)
 
     # Step 8: Write output
     out_json = json.dumps(review_output, indent=2)

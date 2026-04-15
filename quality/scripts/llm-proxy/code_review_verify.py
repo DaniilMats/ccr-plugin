@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import argparse
 import json
 
-from llm_proxy import run_proxy
+from llm_proxy import build_llm_invocation, run_proxy
 
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -97,6 +97,25 @@ def _parse_llm_response(raw_response: str) -> dict:
     }
 
 
+def _build_verification_output(
+    *,
+    verified_findings: list[dict],
+    summary: str,
+    raw_response: str,
+    llm_invocation: dict | None = None,
+) -> dict:
+    payload = {
+        "contract_version": "ccr.verification_result.v1",
+        "verified_findings": verified_findings,
+        "summary": summary,
+        "raw_response": raw_response,
+    }
+    if llm_invocation is not None:
+        payload["llm_invocation"] = llm_invocation
+    return payload
+
+
+
 def _dry_run_result(payload: dict, provider: str) -> dict:
     verified_findings = []
     for candidate in payload.get("candidates", []):
@@ -110,12 +129,39 @@ def _dry_run_result(payload: dict, provider: str) -> dict:
                 "evidence": f"[dry-run] Verification skipped. Provider would be '{provider}'.",
             }
         )
-    return {
-        "contract_version": "ccr.verification_result.v1",
-        "verified_findings": verified_findings,
-        "summary": "[dry-run] Verification skipped.",
-        "raw_response": "[dry-run]",
-    }
+    return _build_verification_output(
+        verified_findings=verified_findings,
+        summary="[dry-run] Verification skipped.",
+        raw_response="[dry-run]",
+        llm_invocation=build_llm_invocation({"provider": provider}, provider=provider),
+    )
+
+
+
+def _result_from_proxy_result(proxy_result: dict, *, provider: str) -> dict:
+    raw_response = str(proxy_result.get("response") or "")
+    llm_invocation = build_llm_invocation(proxy_result, provider=provider)
+    exit_code = proxy_result.get("exit_code", 1)
+    if exit_code != 0 or proxy_result.get("error"):
+        error_msg = proxy_result.get("error") or "LLM provider returned non-zero exit code."
+        return _build_verification_output(
+            verified_findings=[],
+            summary=f"Verification failed: {error_msg}",
+            raw_response=raw_response,
+            llm_invocation=llm_invocation,
+        )
+
+    parsed = _parse_llm_response(raw_response)
+    verified_findings = parsed.get("verified_findings") if isinstance(parsed.get("verified_findings"), list) else []
+    summary = parsed.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        summary = "Verification completed."
+    return _build_verification_output(
+        verified_findings=verified_findings,
+        summary=summary,
+        raw_response=raw_response,
+        llm_invocation=llm_invocation,
+    )
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -168,28 +214,16 @@ def main() -> None:
         response_schema=SCHEMA_PATH,
     )
 
-    raw_response = proxy_result.get("response", "")
     exit_code = proxy_result.get("exit_code", 1)
     if exit_code != 0 or proxy_result.get("error"):
         error_msg = proxy_result.get("error") or "LLM provider returned non-zero exit code."
         print(f"ERROR: LLM provider '{args.provider}' failed: {error_msg}", file=sys.stderr)
-        result = {
-            "contract_version": "ccr.verification_result.v1",
-            "verified_findings": [],
-            "summary": f"Verification failed: {error_msg}",
-            "raw_response": raw_response,
-        }
+        result = _result_from_proxy_result(proxy_result, provider=args.provider)
         _write_output(args.output_file, result)
         print(json.dumps(result, indent=2))
         sys.exit(1)
 
-    parsed = _parse_llm_response(raw_response)
-    result = {
-        "contract_version": "ccr.verification_result.v1",
-        "verified_findings": parsed.get("verified_findings", []),
-        "summary": parsed.get("summary", "Verification completed."),
-        "raw_response": raw_response,
-    }
+    result = _result_from_proxy_result(proxy_result, provider=args.provider)
     _write_output(args.output_file, result)
     print(json.dumps(result, indent=2))
 

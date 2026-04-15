@@ -266,6 +266,18 @@ class TestContracts(unittest.TestCase):
             ],
             "summary": "Example summary.",
             "raw_response": "{}",
+            "llm_invocation": {
+                "provider": "codex",
+                "thread_id": "thread-123",
+                "tokens": 321,
+                "duration_ms": 1234,
+                "exit_code": 0,
+                "error": None,
+                "timed_out": False,
+                "schema_valid": True,
+                "schema_retries": 1,
+                "schema_violations": [],
+            },
         }
         self._assert_valid(payload, "reviewer_result.schema.json")
 
@@ -461,6 +473,18 @@ class TestContracts(unittest.TestCase):
             ],
             "summary": "One finding confirmed.",
             "raw_response": "{}",
+            "llm_invocation": {
+                "provider": "codex",
+                "thread_id": "thread-456",
+                "tokens": 222,
+                "duration_ms": 987,
+                "exit_code": 0,
+                "error": None,
+                "timed_out": False,
+                "schema_valid": True,
+                "schema_retries": 1,
+                "schema_violations": [],
+            },
         }
         self._assert_valid(payload, "verification_result.schema.json")
 

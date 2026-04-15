@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from util import REPO_ROOT, load_module
+from util import load_module
 
 
 class FakeAdapter:
@@ -43,6 +43,7 @@ class TestLLMProxy(unittest.TestCase):
 
             written = json.loads(output_file.read_text(encoding="utf-8"))
             self.assertEqual(result["exit_code"], 0)
+            self.assertEqual(result["provider"], "codex")
             self.assertTrue(result["schema_valid"])
             self.assertEqual(result["schema_retries"], 0)
             self.assertIn("[dry-run]", result["response"])
@@ -51,6 +52,7 @@ class TestLLMProxy(unittest.TestCase):
     def test_run_proxy_rejects_unknown_provider(self) -> None:
         result = self.module.run_proxy(prompt="hi", provider="unknown-provider")
         self.assertEqual(result["exit_code"], 1)
+        self.assertEqual(result["provider"], "unknown-provider")
         self.assertIn("Unknown provider", result["error"])
 
     def test_run_proxy_retries_schema_and_preserves_thread_id(self) -> None:
@@ -91,6 +93,7 @@ class TestLLMProxy(unittest.TestCase):
                 )
 
         self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["provider"], "codex")
         self.assertTrue(result["schema_valid"])
         self.assertEqual(result["schema_retries"], 1)
         self.assertEqual(result["thread_id"], "thread-1")
@@ -112,8 +115,26 @@ class TestLLMProxy(unittest.TestCase):
             )
 
         self.assertEqual(result["exit_code"], 1)
+        self.assertEqual(result["provider"], "codex")
         self.assertIn("Cannot read schema file", result["error"])
         self.assertEqual(fake.calls, [])
+
+    def test_build_llm_invocation_normalizes_missing_fields(self) -> None:
+        invocation = self.module.build_llm_invocation(
+            {
+                "provider": "claude",
+                "schema_violations": ["missing summary", 42],
+            }
+        )
+
+        self.assertEqual(invocation["provider"], "claude")
+        self.assertEqual(invocation["thread_id"], None)
+        self.assertEqual(invocation["tokens"], 0)
+        self.assertEqual(invocation["duration_ms"], 0)
+        self.assertEqual(invocation["exit_code"], 0)
+        self.assertEqual(invocation["schema_valid"], True)
+        self.assertEqual(invocation["schema_retries"], 0)
+        self.assertEqual(invocation["schema_violations"], ["missing summary", "42"])
 
 
 if __name__ == "__main__":

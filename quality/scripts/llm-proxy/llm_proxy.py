@@ -68,8 +68,9 @@ def run_proxy(
         output_file: Optional path to write JSON output to.
 
     Returns:
-        dict with keys: response, thread_id, tokens, duration_ms, exit_code,
-                        error, timed_out, schema_valid, schema_retries.
+        dict with keys: provider, response, thread_id, tokens, duration_ms,
+                        exit_code, error, timed_out, schema_valid,
+                        schema_retries, and optionally schema_violations.
     """
     started_at = time.monotonic()
 
@@ -93,7 +94,7 @@ def run_proxy(
             error="Unknown provider '{}'. Must be one of: {}".format(provider, ", ".join(PROVIDERS)),
             duration_ms=_elapsed_ms(),
         )
-        return result.to_dict()
+        return _finalize_proxy_output(result.to_dict(), provider=provider, output_file=output_file)
 
     if dry_run:
         result = ProxyResponse(
@@ -109,9 +110,7 @@ def run_proxy(
             schema_valid=True,
             schema_retries=0,
         )
-        out = result.to_dict()
-        _maybe_write_output(out, output_file)
-        return out
+        return _finalize_proxy_output(result.to_dict(), provider=provider, output_file=output_file)
 
     # Build adapter
     adapter = _build_adapter(provider)
@@ -128,9 +127,7 @@ def run_proxy(
                 error="Cannot read schema file: {}".format(exc),
                 duration_ms=_elapsed_ms(),
             )
-            out = result.to_dict()
-            _maybe_write_output(out, output_file)
-            return out
+            return _finalize_proxy_output(result.to_dict(), provider=provider, output_file=output_file)
 
     deadline = started_at + timeout
 
@@ -187,9 +184,7 @@ def run_proxy(
     last_response.thread_id = thread_id
     last_response.schema_retries = schema_retries
     last_response.duration_ms = _elapsed_ms()
-    out = last_response.to_dict()
-    _maybe_write_output(out, output_file)
-    return out
+    return _finalize_proxy_output(last_response.to_dict(), provider=provider, output_file=output_file)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -203,6 +198,72 @@ def _build_adapter(provider: str):
     elif provider == "claude":
         return ClaudeAdapter()
     raise ValueError("Unknown provider: {}".format(provider))
+
+
+def _finalize_proxy_output(data: dict, *, provider: str, output_file: Optional[str]) -> dict:
+    """Attach stable provider metadata and optionally persist the output JSON."""
+    out = dict(data)
+    out["provider"] = provider
+    _maybe_write_output(out, output_file)
+    return out
+
+
+def build_llm_invocation(proxy_result: dict, *, provider: Optional[str] = None) -> dict:
+    """Normalize llm-proxy output into the stable CCR llm_invocation shape."""
+    invocation_provider = proxy_result.get("provider")
+    if not isinstance(invocation_provider, str) or not invocation_provider:
+        invocation_provider = provider
+
+    thread_id = proxy_result.get("thread_id")
+    if not isinstance(thread_id, str) or not thread_id:
+        thread_id = None
+
+    error = proxy_result.get("error")
+    if error is not None:
+        error = str(error)
+
+    tokens = proxy_result.get("tokens")
+    if not isinstance(tokens, int) or tokens < 0:
+        tokens = 0
+
+    duration_ms = proxy_result.get("duration_ms")
+    if not isinstance(duration_ms, int) or duration_ms < 0:
+        duration_ms = 0
+
+    exit_code = proxy_result.get("exit_code")
+    if not isinstance(exit_code, int):
+        exit_code = 0
+
+    schema_retries = proxy_result.get("schema_retries")
+    if not isinstance(schema_retries, int) or schema_retries < 0:
+        schema_retries = 0
+
+    schema_violations = proxy_result.get("schema_violations")
+    if not isinstance(schema_violations, list):
+        schema_violations = []
+    else:
+        schema_violations = [str(item) for item in schema_violations]
+
+    schema_valid = proxy_result.get("schema_valid")
+    if not isinstance(schema_valid, bool):
+        schema_valid = True
+
+    timed_out = proxy_result.get("timed_out")
+    if not isinstance(timed_out, bool):
+        timed_out = False
+
+    return {
+        "provider": invocation_provider,
+        "thread_id": thread_id,
+        "tokens": tokens,
+        "duration_ms": duration_ms,
+        "exit_code": exit_code,
+        "error": error,
+        "timed_out": timed_out,
+        "schema_valid": schema_valid,
+        "schema_retries": schema_retries,
+        "schema_violations": schema_violations,
+    }
 
 
 def _maybe_write_output(data: dict, output_file: Optional[str]) -> None:

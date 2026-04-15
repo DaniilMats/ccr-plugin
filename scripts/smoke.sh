@@ -108,6 +108,24 @@ assert "NOTE: This is a synthetic full-code review artifact." in text
 assert "diff --git a/tests/fixtures/go_repo/internal/auth/jwt.go b/tests/fixtures/go_repo/internal/auth/jwt.go" in text
 PY
 
+echo "[smoke] code review dry-run"
+python3 quality/scripts/llm-proxy/code_review.py \
+  --diff-file tests/fixtures/go_repo/review_artifact.txt \
+  --provider gemini \
+  --persona security \
+  --dry-run \
+  --output-file "$TMP_DIR/code_review_result.json" > "$TMP_DIR/code_review_result.stdout.json"
+python3 - <<'PY' "$TMP_DIR/code_review_result.stdout.json" "$TMP_DIR/code_review_result.json"
+import json, sys
+from pathlib import Path
+stdout_payload = json.loads(Path(sys.argv[1]).read_text())
+written_payload = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_payload["contract_version"] == "ccr.reviewer_result.v1"
+assert stdout_payload["llm_invocation"]["provider"] == "gemini"
+assert stdout_payload["llm_invocation"]["schema_retries"] == 0
+assert written_payload == stdout_payload
+PY
+
 echo "[smoke] code review verify dry-run"
 python3 - <<'PY' "$TMP_DIR/verify_input.json"
 import json, sys
@@ -139,6 +157,8 @@ stdout_payload = json.loads(Path(sys.argv[1]).read_text())
 written_payload = json.loads(Path(sys.argv[2]).read_text())
 assert stdout_payload["contract_version"] == "ccr.verification_result.v1"
 assert stdout_payload["verified_findings"][0]["verdict"] == "uncertain"
+assert stdout_payload["llm_invocation"]["provider"] == "codex"
+assert stdout_payload["llm_invocation"]["schema_retries"] == 0
 assert written_payload == stdout_payload
 PY
 

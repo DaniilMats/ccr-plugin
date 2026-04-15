@@ -15,6 +15,12 @@ This plan intentionally **excludes CI integration** for now. CI wiring can be ad
 
 Suggested release target after the Phase 4 non-CI work: **`v0.6.0`**.
 
+## Progress note
+
+As of 2026-04-15:
+- Step 1 is complete: added `llm_invocation`, `reviewers_manifest`, and `run_metrics` schemas plus `run_metrics_file` in run artifacts.
+- Step 2 is complete: `code_review.py` and `code_review_verify.py` now persist normalized `llm_invocation` telemetry, including schema-retry visibility, in structured outputs.
+
 ---
 
 ## Current state
@@ -458,6 +464,6 @@ Phase 4 (non-CI) is complete when:
 
 ## Recommended immediate next move
 
-Start with **Step 1 — contracts and artifact paths**.
+Proceed to **Step 3 — harness aggregation and run metrics**.
 
-That gives us a stable place to put telemetry and metrics before we thread new data through `code_review.py`, `code_review_verify.py`, and `ccr_run.py`.
+That carries the newly persisted reviewer/verifier telemetry through `quality/scripts/ccr_run.py`, enriches status/trace payloads, and makes `run_metrics.json` reflect provider/schema behavior instead of only coarse counters.
