@@ -67,7 +67,18 @@ class TestCCRWatch(unittest.TestCase):
                 },
                 "stages": {},
                 "target": {},
-                "route_plan": {},
+                "route_plan": {
+                    "summary": "Review plan: medium-risk MR → Logic x3, Security x1",
+                    "total_passes": 4,
+                    "full_matrix": False,
+                    "pass_counts": {
+                        "logic": 3,
+                        "security": 1,
+                        "concurrency": 0,
+                        "performance": 0,
+                        "requirements": 0,
+                    },
+                },
                 "reviewers": {
                     "planned": 14,
                     "workers": 14,
@@ -121,7 +132,7 @@ class TestCCRWatch(unittest.TestCase):
                 check=True,
             )
             self.assertIn("⏳ CCR abcd1234 · running · Reviewers [7/10]", first.stdout)
-            self.assertIn("▶ Reviewers +1 ⇒ 4/14 complete · 10 running", first.stdout)
+            self.assertIn("▶ Reviewers +1 ⇒ 4/14 complete · 10 running · Logic x3, Security x1", first.stdout)
             self.assertIn("⚠ Reviewer signals: 1 finding(s) · security_p1", first.stdout)
 
             cursor_payload = json.loads(cursor_file.read_text(encoding="utf-8"))
@@ -218,7 +229,18 @@ class TestCCRWatch(unittest.TestCase):
                 },
                 "stages": {},
                 "target": {},
-                "route_plan": {},
+                "route_plan": {
+                    "summary": "Review plan: high-risk MR → Logic x3, Security x2",
+                    "total_passes": 5,
+                    "full_matrix": False,
+                    "pass_counts": {
+                        "logic": 3,
+                        "security": 2,
+                        "concurrency": 0,
+                        "performance": 0,
+                        "requirements": 0,
+                    },
+                },
                 "reviewers": {
                     "planned": 14,
                     "workers": 14,
@@ -270,7 +292,7 @@ class TestCCRWatch(unittest.TestCase):
                 check=True,
             )
             self.assertIn("⏳ CCR ef901234 · running · Reviewers [7/10]", result.stdout)
-            self.assertIn("▶ Reviewers +2 ⇒ 5/14 complete · 9 running", result.stdout)
+            self.assertIn("▶ Reviewers +2 ⇒ 5/14 complete · 9 running · Logic x3, Security x2", result.stdout)
             self.assertIn("⚠ Reviewer signals: 3 finding(s) · requirements_p1, security_p2", result.stdout)
             self.assertNotIn("Reviewer 4/14 finished", result.stdout)
             self.assertNotIn("Reviewer 5/14 finished", result.stdout)

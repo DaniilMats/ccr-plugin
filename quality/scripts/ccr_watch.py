@@ -61,6 +61,16 @@ _STAGE_ICONS = {
     "failed": "✖",
 }
 
+_PERSONA_LABELS = {
+    "logic": "Logic",
+    "security": "Security",
+    "concurrency": "Concurrency",
+    "performance": "Performance",
+    "requirements": "Requirements",
+}
+
+_PERSONA_ORDER = ("logic", "security", "concurrency", "performance", "requirements")
+
 
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
@@ -161,7 +171,50 @@ def _stage_label(current_stage: dict[str, Any] | None) -> str:
     return str(name)
 
 
-def _format_snapshot_line(kind: str, progress: dict[str, Any], *, verification: bool = False) -> str | None:
+def _format_persona_mix(route_plan: dict[str, Any] | None, reviewers: dict[str, Any] | None = None) -> str | None:
+    counts: dict[str, int] = {}
+    if isinstance(route_plan, dict):
+        pass_counts = route_plan.get("pass_counts")
+        if isinstance(pass_counts, dict):
+            for persona, value in pass_counts.items():
+                try:
+                    count = int(value or 0)
+                except (TypeError, ValueError):
+                    count = 0
+                if count > 0:
+                    counts[str(persona)] = count
+    if not counts and isinstance(reviewers, dict):
+        passes = reviewers.get("passes")
+        if isinstance(passes, dict):
+            for pass_status in passes.values():
+                if not isinstance(pass_status, dict):
+                    continue
+                persona = str(pass_status.get("persona") or "").strip()
+                if persona:
+                    counts[persona] = counts.get(persona, 0) + 1
+    if not counts:
+        return None
+    parts: list[str] = []
+    seen: set[str] = set()
+    for persona in _PERSONA_ORDER:
+        count = counts.get(persona, 0)
+        if count > 0:
+            parts.append(f"{_PERSONA_LABELS.get(persona, persona.title())} x{count}")
+            seen.add(persona)
+    for persona in sorted(key for key in counts if key not in seen):
+        count = counts.get(persona, 0)
+        if count > 0:
+            parts.append(f"{_PERSONA_LABELS.get(persona, persona.title())} x{count}")
+    return ", ".join(parts) if parts else None
+
+
+def _format_snapshot_line(
+    kind: str,
+    progress: dict[str, Any],
+    *,
+    verification: bool = False,
+    persona_mix: str | None = None,
+) -> str | None:
     if not isinstance(progress, dict):
         return None
     if verification:
@@ -176,7 +229,8 @@ def _format_snapshot_line(kind: str, progress: dict[str, Any], *, verification: 
         return None
     workers = int(progress.get("workers") or 0)
     estimate = _format_seconds_short(int(progress.get("estimated_max_duration_sec") or 0))
-    return f"{kind} {completed}/{planned} complete · {running} running · workers={workers} · est≤{estimate}"
+    mix_suffix = f" · {persona_mix}" if persona_mix and not verification else ""
+    return f"{kind} {completed}/{planned} complete · {running} running · workers={workers}{mix_suffix} · est≤{estimate}"
 
 
 def _summarize_status(status: dict[str, Any]) -> list[str]:
@@ -187,7 +241,12 @@ def _summarize_status(status: dict[str, Any]) -> list[str]:
     icon = _STATE_ICONS.get(state, "ℹ")
     lines.append(f"{icon} CCR {run_id} · {state} · {_stage_label(current_stage)}")
 
-    reviewer_line = _format_snapshot_line("▶ Reviewers", status.get("reviewers", {}), verification=False)
+    reviewer_line = _format_snapshot_line(
+        "▶ Reviewers",
+        status.get("reviewers", {}),
+        verification=False,
+        persona_mix=_format_persona_mix(status.get("route_plan", {}), status.get("reviewers", {})),
+    )
     if reviewer_line:
         lines.append(reviewer_line)
 
@@ -219,6 +278,9 @@ def _format_stage_event(event: dict[str, Any]) -> str | None:
         has_requirements = bool(data.get("has_requirements"))
         return f"📋 Requirements ready · source={source} · provided={str(has_requirements).lower()}"
     if stage == "routing":
+        summary = str(data.get("summary") or "").strip()
+        if summary:
+            return f"🧭 {summary}"
         return f"🧭 Routing ready · planned={int(data.get('planned') or 0)} · full_matrix={str(bool(data.get('full_matrix'))).lower()}"
     if stage == "review_context":
         context_status = str(data.get("context_status") or "unknown")
@@ -242,7 +304,11 @@ def _format_stage_event(event: dict[str, Any]) -> str | None:
     return f"{icon} {_stage_name(stage)} finished{duration_suffix}"
 
 
-def _aggregate_reviewer_events(events: list[dict[str, Any]], reviewers: dict[str, Any]) -> list[str]:
+def _aggregate_reviewer_events(
+    events: list[dict[str, Any]],
+    reviewers: dict[str, Any],
+    route_plan: dict[str, Any] | None = None,
+) -> list[str]:
     completed_events = [event for event in events if event.get("event") == "reviewer_completed"]
     if not completed_events:
         return []
@@ -251,7 +317,9 @@ def _aggregate_reviewer_events(events: list[dict[str, Any]], reviewers: dict[str
     planned = int(last_data.get("planned") or reviewers.get("planned") or 0)
     running = int(last_data.get("running") or reviewers.get("running") or 0)
     delta = len(completed_events)
-    lines = [f"▶ Reviewers +{delta} ⇒ {completed}/{planned} complete · {running} running"]
+    persona_mix = _format_persona_mix(route_plan, reviewers)
+    mix_suffix = f" · {persona_mix}" if persona_mix else ""
+    lines = [f"▶ Reviewers +{delta} ⇒ {completed}/{planned} complete · {running} running{mix_suffix}"]
 
     failed = [event for event in completed_events if str((event.get("data") or {}).get("status") or "") != "succeeded"]
     if failed:
@@ -338,7 +406,11 @@ def _render_display_lines(status: dict[str, Any], events: list[dict[str, Any]], 
     if emit_heartbeat or events or done:
         lines.append(_summarize_status(status)[0])
 
-    reviewer_progress_lines = _aggregate_reviewer_events(events, status.get("reviewers", {}))
+    reviewer_progress_lines = _aggregate_reviewer_events(
+        events,
+        status.get("reviewers", {}),
+        status.get("route_plan", {}),
+    )
     verification_progress_lines = _aggregate_verification_events(events, status.get("verification", {}))
 
     misc_lines: list[str] = []
@@ -352,7 +424,12 @@ def _render_display_lines(status: dict[str, Any], events: list[dict[str, Any]], 
     current_stage = status.get("current_stage") if isinstance(status.get("current_stage"), dict) else None
     current_stage_name = str((current_stage or {}).get("name") or "")
     if (emit_heartbeat or done) and current_stage_name == "reviewers" and not reviewer_progress_lines:
-        reviewer_line = _format_snapshot_line("▶ Reviewers", status.get("reviewers", {}), verification=False)
+        reviewer_line = _format_snapshot_line(
+            "▶ Reviewers",
+            status.get("reviewers", {}),
+            verification=False,
+            persona_mix=_format_persona_mix(status.get("route_plan", {}), status.get("reviewers", {})),
+        )
         if reviewer_line:
             lines.append(reviewer_line)
     if (emit_heartbeat or done) and current_stage_name == "verification" and not verification_progress_lines:

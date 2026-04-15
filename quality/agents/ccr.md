@@ -229,6 +229,7 @@ Rules:
 - allow the watcher to manage progress deltas through `<watch_cursor_file>`
 - surface only the new human-readable lines the watcher emits
 - if a watcher line is already clear, you may repeat it verbatim or paraphrase it closely
+- when the watcher includes a review-plan or reviewer-mix line, preserve the persona names/counts instead of collapsing them to generic phrases like `5 personas`
 - do **NOT** add generic filler like `Continuing.`, `Reviewers progressing.`, or `Waiting on reviewer passes.`
 - when the watcher exits, read `summary_file` and `report_file`
 
