@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRReviewersManifestV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "passes", "summary"],
+  "properties": {
+    "contract_version": { "const": "ccr.reviewers_manifest.v1" },
+    "passes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "pass_name",
+          "persona",
+          "provider",
+          "diff_kind",
+          "status",
+          "exit_code",
+          "timed_out",
+          "output_file",
+          "stderr_file",
+          "finding_count",
+          "summary"
+        ],
+        "properties": {
+          "pass_name": { "type": "string", "minLength": 1 },
+          "persona": { "type": "string", "minLength": 1 },
+          "provider": { "type": "string", "minLength": 1 },
+          "diff_kind": { "enum": ["original", "shuffled"] },
+          "status": { "enum": ["succeeded", "failed"] },
+          "exit_code": { "type": "integer" },
+          "timed_out": { "type": "boolean" },
+          "started_at": { "type": ["string", "null"] },
+          "finished_at": { "type": ["string", "null"] },
+          "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+          "output_file": { "type": "string", "minLength": 1 },
+          "stderr_file": { "type": "string", "minLength": 1 },
+          "finding_count": { "type": "integer", "minimum": 0 },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "planned_passes",
+        "worker_count",
+        "timeout_sec",
+        "estimated_max_duration_sec",
+        "completed_passes",
+        "succeeded_passes",
+        "failed_passes",
+        "total_findings"
+      ],
+      "properties": {
+        "planned_passes": { "type": "integer", "minimum": 0 },
+        "worker_count": { "type": "integer", "minimum": 0 },
+        "timeout_sec": { "type": "integer", "minimum": 0 },
+        "estimated_max_duration_sec": { "type": "integer", "minimum": 0 },
+        "completed_passes": { "type": "integer", "minimum": 0 },
+        "succeeded_passes": { "type": "integer", "minimum": 0 },
+        "failed_passes": { "type": "integer", "minimum": 0 },
+        "total_findings": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

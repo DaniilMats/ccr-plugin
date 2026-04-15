@@ -32,13 +32,16 @@ class TestContracts(unittest.TestCase):
             "run_launch.schema.json",
             "watch_result.schema.json",
             "static_analysis.schema.json",
+            "llm_invocation.schema.json",
             "reviewer_result.schema.json",
+            "reviewers_manifest.schema.json",
             "consolidated_candidate.schema.json",
             "candidates_manifest.schema.json",
             "verification_prepare.schema.json",
             "verification_batch.schema.json",
             "verification_result.schema.json",
             "verified_findings.schema.json",
+            "run_metrics.schema.json",
             "posting_approval.schema.json",
             "posting_manifest.schema.json",
             "posting_result.schema.json",
@@ -136,6 +139,7 @@ class TestContracts(unittest.TestCase):
             "status_file": "/tmp/ccr/run/status.json",
             "trace_file": "/tmp/ccr/run/trace.jsonl",
             "summary_file": "/tmp/ccr/run/run_summary.json",
+            "run_metrics_file": "/tmp/ccr/run/run_metrics.json",
             "watch_cursor_file": "/tmp/ccr/run/watch_cursor.json",
             "harness_stdout_file": "/tmp/ccr/run/logs/harness.stdout.txt",
             "harness_stderr_file": "/tmp/ccr/run/logs/harness.stderr.txt",
@@ -173,6 +177,7 @@ class TestContracts(unittest.TestCase):
             "status_file": "/tmp/ccr/run/status.json",
             "trace_file": "/tmp/ccr/run/trace.jsonl",
             "summary_file": "/tmp/ccr/run/run_summary.json",
+            "run_metrics_file": "/tmp/ccr/run/run_metrics.json",
             "watch_cursor_file": "/tmp/ccr/run/watch_cursor.json",
             "report_file": "/tmp/ccr/run/report.md",
             "reviewers_file": "/tmp/ccr/run/reviewers.json",
@@ -233,6 +238,21 @@ class TestContracts(unittest.TestCase):
         payload = self.static_analysis.empty_result()
         self._assert_valid(payload, "static_analysis.schema.json")
 
+    def test_llm_invocation_contract(self) -> None:
+        payload = {
+            "provider": "codex",
+            "thread_id": "thread-123",
+            "tokens": 321,
+            "duration_ms": 1234,
+            "exit_code": 0,
+            "error": None,
+            "timed_out": False,
+            "schema_valid": True,
+            "schema_retries": 1,
+            "schema_violations": [],
+        }
+        self._assert_valid(payload, "llm_invocation.schema.json")
+
     def test_reviewer_result_contract(self) -> None:
         payload = {
             "contract_version": "ccr.reviewer_result.v1",
@@ -248,6 +268,40 @@ class TestContracts(unittest.TestCase):
             "raw_response": "{}",
         }
         self._assert_valid(payload, "reviewer_result.schema.json")
+
+    def test_reviewers_manifest_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.reviewers_manifest.v1",
+            "passes": [
+                {
+                    "pass_name": "security_p1",
+                    "persona": "security",
+                    "provider": "codex",
+                    "diff_kind": "original",
+                    "status": "succeeded",
+                    "exit_code": 0,
+                    "timed_out": False,
+                    "started_at": "2026-04-15T00:00:00Z",
+                    "finished_at": "2026-04-15T00:00:05Z",
+                    "duration_ms": 5000,
+                    "output_file": "/tmp/ccr/run/reviewers/security_p1.json",
+                    "stderr_file": "/tmp/ccr/run/logs/reviewer.security_p1.stderr.txt",
+                    "finding_count": 1,
+                    "summary": "One finding.",
+                }
+            ],
+            "summary": {
+                "planned_passes": 14,
+                "worker_count": 14,
+                "timeout_sec": 600,
+                "estimated_max_duration_sec": 600,
+                "completed_passes": 14,
+                "succeeded_passes": 13,
+                "failed_passes": 1,
+                "total_findings": 3,
+            },
+        }
+        self._assert_valid(payload, "reviewers_manifest.schema.json")
 
     def test_consolidated_candidate_contract(self) -> None:
         payload = {
@@ -453,6 +507,56 @@ class TestContracts(unittest.TestCase):
             },
         }
         self._assert_valid(payload, "verified_findings.schema.json")
+
+    def test_run_metrics_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.run_metrics.v1",
+            "run_id": "20260414T220000Z-1234-abcd1234",
+            "generated_at": "2026-04-14T22:00:00Z",
+            "mode": "local",
+            "target": "package:internal/auth",
+            "requirements": {
+                "source": "inline",
+                "has_requirements": True,
+                "requirements_chars": 42,
+            },
+            "route": {
+                "summary": "Review plan: high-risk MR → Logic x3, Security x3",
+                "total_passes": 14,
+                "full_matrix": True,
+                "changed_file_count": 2,
+                "changed_lines": 52,
+            },
+            "reviewers": {
+                "planned_passes": 14,
+                "completed_passes": 14,
+                "succeeded_passes": 13,
+                "failed_passes": 1,
+                "total_findings": 3,
+                "availability_rate": 0.9286,
+            },
+            "candidates": {
+                "candidate_count": 2,
+                "source_finding_count": 3,
+                "skipped_invalid_finding_count": 0,
+            },
+            "verification": {
+                "candidate_count": 2,
+                "ready_count": 1,
+                "dropped_count": 1,
+                "verified_count": 1,
+                "batch_count": 1,
+                "successful_batches": 1,
+                "failed_batches": 0,
+            },
+            "posting": {
+                "posting_supported": False,
+                "posting_approval_file": "/tmp/ccr/run/posting_approval.json",
+                "posting_manifest_file": "/tmp/ccr/run/posting_manifest.json",
+                "posting_results_file": "/tmp/ccr/run/posting_results.json",
+            },
+        }
+        self._assert_valid(payload, "run_metrics.schema.json")
 
     def test_posting_approval_contract(self) -> None:
         payload = {

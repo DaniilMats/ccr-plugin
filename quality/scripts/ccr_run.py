@@ -273,6 +273,7 @@ class RunObserver:
                 "status_file": manifest["status_file"],
                 "trace_file": manifest["trace_file"],
                 "summary_file": manifest["summary_file"],
+                "run_metrics_file": manifest["run_metrics_file"],
                 "watch_cursor_file": manifest["watch_cursor_file"],
                 "report_file": manifest["report_file"],
                 "reviewers_file": manifest["reviewers_file"],
@@ -1686,6 +1687,78 @@ def _build_candidates(
     return candidates, candidates_summary
 
 
+def _ratio(numerator: int, denominator: int) -> float | None:
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 4)
+
+
+
+def _write_run_metrics(
+    manifest: dict[str, Any],
+    *,
+    target: ReviewTarget,
+    route_input: dict[str, Any],
+    route_plan: dict[str, Any],
+    requirements_source: str,
+    requirements_text: str,
+    reviewers_summary: dict[str, Any],
+    candidates_summary: dict[str, Any],
+    verification_summary: dict[str, Any],
+) -> dict[str, Any]:
+    verification_prepare_payload = _load_json_file(Path(manifest["verification_prepare_file"]), default={})
+    verification_prepare_summary = verification_prepare_payload.get("summary") if isinstance(verification_prepare_payload, dict) else {}
+    if not isinstance(verification_prepare_summary, dict):
+        verification_prepare_summary = {}
+
+    payload = {
+        "contract_version": "ccr.run_metrics.v1",
+        "run_id": manifest["run_id"],
+        "generated_at": _utc_now(),
+        "mode": target.mode,
+        "target": target.display_target,
+        "requirements": {
+            "source": requirements_source,
+            "has_requirements": bool(requirements_text.strip()),
+            "requirements_chars": len(requirements_text),
+        },
+        "route": {
+            "summary": route_plan.get("summary"),
+            "total_passes": route_plan.get("total_passes"),
+            "full_matrix": route_plan.get("full_matrix"),
+            "pass_counts": route_plan.get("pass_counts"),
+            "triggered_personas": route_input.get("triggered_personas"),
+            "highest_risk_personas": route_input.get("highest_risk_personas"),
+            "critical_surfaces": route_input.get("critical_surfaces"),
+            "changed_file_count": route_input.get("changed_file_count"),
+            "changed_lines": route_input.get("changed_lines"),
+        },
+        "reviewers": {
+            **reviewers_summary,
+            "availability_rate": _ratio(
+                int(reviewers_summary.get("succeeded_passes") or 0),
+                int(reviewers_summary.get("planned_passes") or 0),
+            ),
+        },
+        "candidates": dict(candidates_summary),
+        "verification": {
+            "candidate_count": verification_prepare_summary.get("candidate_count"),
+            "ready_count": verification_prepare_summary.get("ready_count"),
+            "dropped_count": verification_prepare_summary.get("dropped_count"),
+            **verification_summary,
+        },
+        "posting": {
+            "posting_supported": target.mode == "mr",
+            "posting_approval_file": manifest["posting_approval_file"],
+            "posting_manifest_file": manifest["posting_manifest_file"],
+            "posting_results_file": manifest["posting_results_file"],
+        },
+    }
+    _write_json(Path(manifest["run_metrics_file"]), payload)
+    return payload
+
+
+
 def _run_single_verification_batch(
     batch: dict[str, Any],
     *,
@@ -2177,6 +2250,7 @@ def launch_ccr_detached(args: argparse.Namespace, raw_args: list[str]) -> dict[s
         "status_file": manifest["status_file"],
         "trace_file": manifest["trace_file"],
         "summary_file": manifest["summary_file"],
+        "run_metrics_file": manifest["run_metrics_file"],
         "watch_cursor_file": manifest["watch_cursor_file"],
         "report_file": manifest["report_file"],
         "reviewers_file": manifest["reviewers_file"],
@@ -2444,6 +2518,18 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
         )
         current_stage = None
 
+        _write_run_metrics(
+            manifest,
+            target=target,
+            route_input=route_input_payload,
+            route_plan=route_plan,
+            requirements_source=requirements_source,
+            requirements_text=requirements_text,
+            reviewers_summary=reviewers_summary,
+            candidates_summary=candidates_summary,
+            verification_summary=verification_summary,
+        )
+
         summary = {
             "contract_version": "ccr.run_summary.v1",
             "run_id": manifest["run_id"],
@@ -2455,6 +2541,7 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             "status_file": manifest["status_file"],
             "trace_file": manifest["trace_file"],
             "summary_file": manifest["summary_file"],
+            "run_metrics_file": manifest["run_metrics_file"],
             "watch_cursor_file": manifest["watch_cursor_file"],
             "harness_stdout_file": manifest["harness_stdout_file"],
             "harness_stderr_file": manifest["harness_stderr_file"],

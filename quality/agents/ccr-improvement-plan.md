@@ -27,6 +27,7 @@ As of 2026-04-15:
 - Phase 3 is complete: deterministic `ccr_consolidate.py` + `ccr_verify_prepare.py`, richer candidate/verified-finding contracts, machine-readable evidence bundles, anchor status, deterministic prefilters, and structured verification-prep artifacts
 - Detailed Phase 2 implementation plan: `quality/agents/ccr-phase2-implementation-plan.md`
 - Detailed Phase 3 implementation plan: `quality/agents/ccr-phase3-implementation-plan.md`
+- Detailed Phase 4 implementation plan (non-CI rollout): `quality/agents/ccr-phase4-implementation-plan.md`
 
 ---
 
@@ -474,7 +475,8 @@ Production review systems work best when **deterministic evidence is evaluated b
 ## Phase 4 — Add observability, traces, and evals
 
 **Priority:** P1  
-**Target:** 1–2 weeks
+**Target:** 1–2 weeks  
+**Status:** Planned — local observability/evals first, CI explicitly deferred for the initial rollout
 
 ### Deliverables
 

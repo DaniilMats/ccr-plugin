@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRRunMetricsV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contract_version",
+    "run_id",
+    "generated_at",
+    "mode",
+    "target",
+    "requirements",
+    "route",
+    "reviewers",
+    "candidates",
+    "verification",
+    "posting"
+  ],
+  "properties": {
+    "contract_version": { "const": "ccr.run_metrics.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "mode": { "enum": ["local", "mr", "artifact"] },
+    "target": { "type": "string", "minLength": 1 },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["source", "has_requirements", "requirements_chars"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "has_requirements": { "type": "boolean" },
+        "requirements_chars": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["summary", "total_passes", "full_matrix"],
+      "properties": {
+        "summary": { "type": ["string", "null"] },
+        "total_passes": { "type": ["integer", "null"], "minimum": 0 },
+        "full_matrix": { "type": ["boolean", "null"] },
+        "changed_file_count": { "type": ["integer", "null"], "minimum": 0 },
+        "changed_lines": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "reviewers": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["planned_passes", "completed_passes", "succeeded_passes", "failed_passes", "total_findings"],
+      "properties": {
+        "planned_passes": { "type": "integer", "minimum": 0 },
+        "completed_passes": { "type": "integer", "minimum": 0 },
+        "succeeded_passes": { "type": "integer", "minimum": 0 },
+        "failed_passes": { "type": "integer", "minimum": 0 },
+        "total_findings": { "type": "integer", "minimum": 0 },
+        "availability_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      }
+    },
+    "candidates": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["candidate_count", "source_finding_count"],
+      "properties": {
+        "candidate_count": { "type": "integer", "minimum": 0 },
+        "source_finding_count": { "type": "integer", "minimum": 0 },
+        "skipped_invalid_finding_count": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["verified_count", "batch_count", "successful_batches", "failed_batches"],
+      "properties": {
+        "candidate_count": { "type": ["integer", "null"], "minimum": 0 },
+        "ready_count": { "type": ["integer", "null"], "minimum": 0 },
+        "dropped_count": { "type": ["integer", "null"], "minimum": 0 },
+        "verified_count": { "type": "integer", "minimum": 0 },
+        "batch_count": { "type": "integer", "minimum": 0 },
+        "successful_batches": { "type": "integer", "minimum": 0 },
+        "failed_batches": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "posting": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["posting_supported"],
+      "properties": {
+        "posting_supported": { "type": "boolean" },
+        "posting_approval_file": { "type": ["string", "null"] },
+        "posting_manifest_file": { "type": ["string", "null"] },
+        "posting_results_file": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

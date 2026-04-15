@@ -373,6 +373,7 @@ def _compact_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]:
         "status_file",
         "trace_file",
         "summary_file",
+        "run_metrics_file",
         "report_file",
         "reviewers_file",
         "candidates_file",

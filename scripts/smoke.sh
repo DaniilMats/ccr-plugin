@@ -266,13 +266,16 @@ import json, sys
 from pathlib import Path
 summary = json.loads(Path(sys.argv[1]).read_text())
 status = json.loads(Path(summary["status_file"]).read_text())
+run_metrics = json.loads(Path(summary["run_metrics_file"]).read_text())
 assert summary["contract_version"] == "ccr.run_summary.v1"
 assert status["contract_version"] == "ccr.run_status.v1"
+assert run_metrics["contract_version"] == "ccr.run_metrics.v1"
 assert status["state"] == "completed"
 assert Path(summary["trace_file"]).is_file()
 verification_prepare = json.loads(Path(summary["verification_prepare_file"]).read_text())
 assert verification_prepare["contract_version"] == "ccr.verification_prepare.v1"
 assert verification_prepare["summary"]["batch_count"] == 0
+assert run_metrics["route"]["total_passes"] == 14
 PY
 
 echo "[smoke] detached harness + watch"
@@ -322,9 +325,11 @@ text_result = subprocess.run([
 assert text_result.stdout.strip() == ""
 summary = json.loads(Path(launch["summary_file"]).read_text())
 status = json.loads(Path(launch["status_file"]).read_text())
+run_metrics = json.loads(Path(launch["run_metrics_file"]).read_text())
 verification_prepare = json.loads(Path(launch["verification_prepare_file"]).read_text())
 assert summary["contract_version"] == "ccr.run_summary.v1"
 assert status["contract_version"] == "ccr.run_status.v1"
+assert run_metrics["contract_version"] == "ccr.run_metrics.v1"
 assert verification_prepare["contract_version"] == "ccr.verification_prepare.v1"
 PY
 

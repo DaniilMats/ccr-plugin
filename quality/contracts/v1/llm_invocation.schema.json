@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRLLMInvocationV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "provider",
+    "tokens",
+    "duration_ms",
+    "exit_code",
+    "timed_out",
+    "schema_valid",
+    "schema_retries"
+  ],
+  "properties": {
+    "provider": { "type": ["string", "null"], "minLength": 1 },
+    "thread_id": { "type": ["string", "null"] },
+    "tokens": { "type": "integer", "minimum": 0 },
+    "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "exit_code": { "type": "integer" },
+    "error": { "type": ["string", "null"] },
+    "timed_out": { "type": "boolean" },
+    "schema_valid": { "type": "boolean" },
+    "schema_retries": { "type": "integer", "minimum": 0 },
+    "schema_violations": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
