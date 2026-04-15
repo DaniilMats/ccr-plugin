@@ -21,6 +21,7 @@ As of 2026-04-15:
 - Step 1 is complete: added `llm_invocation`, `reviewers_manifest`, and `run_metrics` schemas plus `run_metrics_file` in run artifacts.
 - Step 2 is complete: `code_review.py` and `code_review_verify.py` now persist normalized `llm_invocation` telemetry, including schema-retry visibility, in structured outputs.
 - Step 3 is complete: `ccr_run.py` now threads reviewer/verifier telemetry into `reviewers.json`, `status.json`, `trace.jsonl`, `verified_findings.json` batch metadata, and richer `run_metrics.json` provider/schema aggregates.
+- Step 4 is complete: `ccr_post_comments.py` now writes richer `posting_results.json` summaries with deterministic status counts, attempt totals, and persona/severity publish breakdowns.
 
 ---
 
@@ -465,6 +466,6 @@ Phase 4 (non-CI) is complete when:
 
 ## Recommended immediate next move
 
-Proceed to **Step 4 — posting metrics and post-run observability**.
+Proceed to **Step 5 — local eval fixtures and runner**.
 
-That closes the current observability gap after review completion by making approval and publish outcomes measurable in structured artifacts instead of only human-readable logs.
+That turns the now-stabilized routing/consolidation/verification/posting artifacts into deterministic local regression suites before any CI rollout is attempted.

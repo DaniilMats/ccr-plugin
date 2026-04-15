@@ -129,6 +129,8 @@ class TestCCRPostComments(unittest.TestCase):
             {
                 "finding_number": 1,
                 "candidate_id": "F1",
+                "persona": "security",
+                "severity": "bug",
                 "file": "internal/auth/jwt.go",
                 "line": 2,
                 "message": "Validate the token before returning.",
@@ -136,6 +138,8 @@ class TestCCRPostComments(unittest.TestCase):
             {
                 "finding_number": 2,
                 "candidate_id": "F2",
+                "persona": "performance",
+                "severity": "warning",
                 "file": "internal/auth/jwt.go",
                 "line": 99,
                 "message": "This line is not in the diff.",
@@ -154,6 +158,13 @@ class TestCCRPostComments(unittest.TestCase):
             self.assertEqual(prepared["summary"]["ready_count"], 1)
             self.assertEqual(prepared["summary"]["missing_anchor_count"], 1)
             self.assertEqual(prepared["summary"]["invalid_count"], 0)
+            self.assertEqual(prepared["summary"]["status_counts"]["ready"], 1)
+            self.assertEqual(prepared["summary"]["status_counts"]["missing_anchor"], 1)
+            self.assertEqual(prepared["summary"]["persona_breakdown"]["security"]["approved_count"], 1)
+            self.assertEqual(prepared["summary"]["persona_breakdown"]["performance"]["missing_anchor_count"], 1)
+            self.assertEqual(prepared["summary"]["severity_breakdown"]["bug"]["ready_count"], 1)
+            self.assertEqual(prepared["approved_findings"][0]["persona"], "security")
+            self.assertEqual(prepared["approved_findings"][0]["severity"], "bug")
             self.assertEqual(prepared["approved_findings"][0]["status"], "ready")
             self.assertEqual(prepared["approved_findings"][0]["anchor"]["new_line"], 2)
             self.assertEqual(prepared["approved_findings"][1]["status"], "missing_anchor")
@@ -182,6 +193,8 @@ class TestCCRPostComments(unittest.TestCase):
             {
                 "finding_number": 1,
                 "candidate_id": "F1",
+                "persona": "security",
+                "severity": "bug",
                 "file": "internal/auth/jwt.go",
                 "line": 2,
                 "message": "Validate the token before returning.",
@@ -232,6 +245,8 @@ class TestCCRPostComments(unittest.TestCase):
             {
                 "finding_number": 1,
                 "candidate_id": "F1",
+                "persona": "security",
+                "severity": "bug",
                 "file": "internal/auth/jwt.go",
                 "line": 2,
                 "message": "Validate the token before returning.",
@@ -276,6 +291,8 @@ class TestCCRPostComments(unittest.TestCase):
             {
                 "finding_number": 1,
                 "candidate_id": "F1",
+                "persona": "security",
+                "severity": "bug",
                 "file": "internal/auth/jwt.go",
                 "line": 2,
                 "message": "Validate the token before returning.",
@@ -312,7 +329,12 @@ class TestCCRPostComments(unittest.TestCase):
             self.assertEqual(result["posted_count"], 0)
             self.assertEqual(result["already_posted_count"], 1)
             self.assertEqual(result["failed_count"], 0)
+            self.assertEqual(result["summary"]["ready_resolution_rate"], 1.0)
+            self.assertEqual(result["summary"]["status_counts"]["already_posted"], 1)
+            self.assertEqual(result["summary"]["persona_breakdown"]["security"]["already_posted_count"], 1)
             self.assertEqual(result["results"][0]["status"], "already_posted")
+            self.assertEqual(result["results"][0]["persona"], "security")
+            self.assertEqual(result["results"][0]["prepared_status"], "ready")
             calls = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
             self.assertTrue(all("POST" not in call for call in calls))
 
@@ -333,6 +355,8 @@ class TestCCRPostComments(unittest.TestCase):
             {
                 "finding_number": 1,
                 "candidate_id": "F1",
+                "persona": "security",
+                "severity": "bug",
                 "file": "internal/auth/jwt.go",
                 "line": 2,
                 "message": "Validate the token before returning.",
@@ -363,8 +387,16 @@ class TestCCRPostComments(unittest.TestCase):
             )
             result = self.module.apply_posting_plan(manifest_file, glab_bin=str(fake_glab))
             self.assertEqual(result["posted_count"], 1)
+            self.assertFalse(result["approved_all"])
+            self.assertEqual(result["approved_finding_numbers"], [1])
+            self.assertGreaterEqual(result["duration_ms"], 0)
+            self.assertEqual(result["summary"]["posted_count"], 1)
+            self.assertEqual(result["summary"]["status_counts"]["posted"], 1)
+            self.assertEqual(result["summary"]["persona_breakdown"]["security"]["posted_count"], 1)
+            self.assertEqual(result["summary"]["severity_breakdown"]["bug"]["posted_count"], 1)
             self.assertEqual(result["results"][0]["status"], "posted")
             self.assertEqual(result["results"][0]["discussion_id"], "discussion-2")
+            self.assertEqual(result["results"][0]["prepared_status"], "ready")
             self.assertTrue(Path(result["results"][0]["response_file"]).is_file())
             calls = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
             self.assertTrue(any("POST" in call for call in calls))
@@ -386,6 +418,8 @@ class TestCCRPostComments(unittest.TestCase):
             {
                 "finding_number": 1,
                 "candidate_id": "F1",
+                "persona": "security",
+                "severity": "bug",
                 "file": "internal/auth/jwt.go",
                 "line": 2,
                 "message": "Validate the token before returning.",
@@ -417,7 +451,96 @@ class TestCCRPostComments(unittest.TestCase):
             result = self.module.apply_posting_plan(manifest_file, glab_bin=str(fake_glab))
             self.assertEqual(result["posted_count"], 0)
             self.assertEqual(result["failed_count"], 1)
+            self.assertEqual(result["summary"]["status_counts"]["invalid_response"], 1)
+            self.assertEqual(result["summary"]["persona_breakdown"]["security"]["invalid_response_count"], 1)
             self.assertEqual(result["results"][0]["status"], "invalid_response")
+
+    def test_apply_writes_rich_summary_for_mixed_outcomes(self) -> None:
+        diff_text = "\n".join(
+            [
+                "diff --git a/internal/auth/jwt.go b/internal/auth/jwt.go",
+                "index 1111111..2222222 100644",
+                "--- a/internal/auth/jwt.go",
+                "+++ b/internal/auth/jwt.go",
+                "@@ -1,1 +1,2 @@",
+                " package auth",
+                "+func Validate() {}",
+                "",
+            ]
+        )
+        verified_findings = [
+            {
+                "finding_number": 1,
+                "candidate_id": "F1",
+                "persona": "security",
+                "severity": "bug",
+                "file": "internal/auth/jwt.go",
+                "line": 2,
+                "message": "Validate the token before returning.",
+            },
+            {
+                "finding_number": 2,
+                "candidate_id": "F2",
+                "persona": "performance",
+                "severity": "warning",
+                "file": "internal/auth/jwt.go",
+                "line": 99,
+                "message": "This line is not in the diff.",
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _manifest, manifest_file = self._setup_mr_run(
+                tmp_path,
+                verified_findings=verified_findings,
+                approval_numbers=[1, 2, 3],
+                diff_text=diff_text,
+            )
+            fake_glab, _log_path = self._write_fake_glab(
+                tmp_path,
+                get_payload=[],
+                post_payload={
+                    "id": "discussion-4",
+                    "notes": [
+                        {
+                            "id": 100,
+                            "type": "DiffNote",
+                            "body": "Posted.",
+                        }
+                    ],
+                },
+            )
+            result = self.module.apply_posting_plan(manifest_file, glab_bin=str(fake_glab))
+
+            self.assertEqual(result["approved_finding_numbers"], [1, 2, 3])
+            self.assertEqual(result["invalid_finding_numbers"], [3])
+            self.assertEqual(result["posted_count"], 1)
+            self.assertEqual(result["skipped_count"], 2)
+            self.assertEqual(result["failed_count"], 0)
+            self.assertEqual(result["summary"]["approved_count"], 2)
+            self.assertEqual(result["summary"]["ready_count"], 1)
+            self.assertEqual(result["summary"]["missing_anchor_count"], 1)
+            self.assertEqual(result["summary"]["invalid_count"], 1)
+            self.assertEqual(result["summary"]["ready_resolved_count"], 1)
+            self.assertEqual(result["summary"]["ready_resolution_rate"], 1.0)
+            self.assertEqual(result["summary"]["total_attempts"], 1)
+            self.assertEqual(result["summary"]["status_counts"]["posted"], 1)
+            self.assertEqual(result["summary"]["status_counts"]["skipped_missing_anchor"], 1)
+            self.assertEqual(result["summary"]["status_counts"]["skipped_invalid_selection"], 1)
+            self.assertEqual(result["summary"]["persona_breakdown"]["security"]["posted_count"], 1)
+            self.assertEqual(result["summary"]["persona_breakdown"]["performance"]["missing_anchor_count"], 1)
+            self.assertEqual(result["summary"]["persona_breakdown"]["performance"]["skipped_missing_anchor_count"], 1)
+            self.assertEqual(result["summary"]["severity_breakdown"]["bug"]["posted_count"], 1)
+            self.assertEqual(result["summary"]["severity_breakdown"]["warning"]["skipped_missing_anchor_count"], 1)
+
+            result_by_number = {item["finding_number"]: item for item in result["results"]}
+            self.assertEqual(result_by_number[1]["status"], "posted")
+            self.assertEqual(result_by_number[1]["persona"], "security")
+            self.assertEqual(result_by_number[2]["status"], "skipped_missing_anchor")
+            self.assertEqual(result_by_number[2]["prepared_status"], "missing_anchor")
+            self.assertEqual(result_by_number[3]["status"], "skipped_invalid_selection")
+            self.assertIsNone(result_by_number[3]["persona"])
 
     def test_prepare_rejects_non_mr_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

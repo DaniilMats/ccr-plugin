@@ -339,7 +339,7 @@ Posting rules:
      --apply
    ```
 4. Do **NOT** manually construct `glab api ... discussions` requests in the prompt
-5. After the helper exits, read `posting_results_file` and summarize posted / already-posted / skipped / failed counts
+5. After the helper exits, read `posting_results_file` and summarize posted / already-posted / skipped / failed counts from its structured `summary` object; include persona/severity breakdowns only when they help explain what was published or skipped
 6. If any posting result failed, show the failures clearly and stop; do not claim the publish step fully succeeded
 7. Local modes never reach this step
 

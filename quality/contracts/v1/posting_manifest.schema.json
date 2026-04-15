@@ -51,6 +51,8 @@
         "properties": {
           "finding_number": { "type": "integer", "minimum": 1 },
           "candidate_id": { "type": "string", "minLength": 1 },
+          "persona": { "type": ["string", "null"] },
+          "severity": { "type": ["string", "null"], "enum": ["bug", "warning", "info", null] },
           "file": { "type": "string", "minLength": 1 },
           "line": { "type": "integer", "minimum": 1 },
           "message": { "type": "string", "minLength": 1 },
@@ -84,7 +86,10 @@
         "approved_count": { "type": "integer", "minimum": 0 },
         "ready_count": { "type": "integer", "minimum": 0 },
         "missing_anchor_count": { "type": "integer", "minimum": 0 },
-        "invalid_count": { "type": "integer", "minimum": 0 }
+        "invalid_count": { "type": "integer", "minimum": 0 },
+        "status_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "persona_breakdown": { "type": "object", "additionalProperties": true },
+        "severity_breakdown": { "type": "object", "additionalProperties": true }
       }
     }
   }

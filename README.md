@@ -13,7 +13,7 @@ Adaptive multi-model code reviewer for [Claude Code](https://claude.com/claude-c
 - **Triple-model diversity**: Pass 1 Gemini, Pass 2 Codex on a shuffled diff, Pass 3 Claude Opus with `--effort max`. Three independent models catch three different classes of issues. Logic always runs all three; specialty personas get Pass 3 only in the full matrix.
 - **Evidence-based consolidation + verification prep**: deterministic `ccr_consolidate.py` and `ccr_verify_prepare.py` attach corroboration, evidence bundles, anchor status, and prefilter decisions before verifier execution
 - **Verification stage** (Codex with Gemini fallback) filters speculative findings before anything is shown to the user
-- **Post-once guarantee** in MR mode: approved inline `DiffNote` comments now go through a deterministic posting helper with explicit approval artifacts, fingerprint-based idempotency, and structured posting results
+- **Post-once guarantee** in MR mode: approved inline `DiffNote` comments now go through a deterministic posting helper with explicit approval artifacts, fingerprint-based idempotency, and structured posting results including publish status counts plus persona/severity breakdowns
 
 ## Requirements
 
@@ -77,7 +77,7 @@ CCR walks the user through:
 6. Evidence-based candidate consolidation + verification preparation
 7. Consolidating verifier outcomes into numbered findings
 8. Printing a numbered report
-9. In MR mode: asking which findings to publish, materializing `posting_approval.json`, and posting through the deterministic `ccr_post_comments.py` helper
+9. In MR mode: asking which findings to publish, materializing `posting_approval.json`, and posting through the deterministic `ccr_post_comments.py` helper, which writes structured `posting_results.json` summary metrics for the publish step
 
 `ccr_run.py` now refuses to launch without explicit non-empty requirements/spec input. For MR runs, `--use-mr-description-as-requirements` is allowed only when the MR description is non-empty.
 
@@ -178,7 +178,7 @@ All paths inside `quality/agents/ccr.md` use `${CLAUDE_PLUGIN_ROOT}` so the plug
 3. Phase 1 orchestration now runs through the deterministic `quality/scripts/ccr_run.py` harness, which owns artifact prep, routing, reviewer subprocess execution, consolidation, verification, and report generation.
 4. The harness now supports detached/background execution and writes machine-readable observability artifacts: `status.json`, `trace.jsonl`, `run_summary.json`, plus launch metadata for watching.
 5. `quality/scripts/ccr_watch.py` now supports compact JSON, quiet icon-prefixed text mode, cursor files, and follow mode so progress updates do not flood the conversation.
-6. Phase 2 MR posting now runs through `quality/scripts/ccr_post_comments.py` with explicit `posting_approval.json`, prepared payloads, fingerprint-based idempotency, `posting_results.json`, and normalization/backfill for incomplete approval files produced by older agent templates.
+6. Phase 2 MR posting now runs through `quality/scripts/ccr_post_comments.py` with explicit `posting_approval.json`, prepared payloads, fingerprint-based idempotency, `posting_results.json`, normalization/backfill for incomplete approval files produced by older agent templates, and structured publish metrics/breakdowns for post-run inspection.
 7. Phase 3 candidate consolidation and verification preparation now run through `quality/scripts/ccr_consolidate.py` and `quality/scripts/ccr_verify_prepare.py` with corroboration metadata, evidence bundles, anchor status, deterministic prefilters, and structured verification-prep artifacts.
 8. In Claude Code, `Monitor` is the preferred live UX layer for long reviews; session-scoped scheduled tasks (`/loop` / `CronCreate`) remain a coarse 1-minute fallback.
 9. Candidate findings must pass verification before being shown.

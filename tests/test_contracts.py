@@ -701,6 +701,8 @@ class TestContracts(unittest.TestCase):
                 {
                     "finding_number": 1,
                     "candidate_id": "F1",
+                    "persona": "security",
+                    "severity": "bug",
                     "file": "internal/auth/jwt.go",
                     "line": 12,
                     "message": "Comment body.",
@@ -723,7 +725,39 @@ class TestContracts(unittest.TestCase):
                 "approved_count": 1,
                 "ready_count": 1,
                 "missing_anchor_count": 0,
-                "invalid_count": 0
+                "invalid_count": 0,
+                "status_counts": {
+                    "ready": 1,
+                    "missing_anchor": 0
+                },
+                "persona_breakdown": {
+                    "security": {
+                        "approved_count": 1,
+                        "ready_count": 1,
+                        "missing_anchor_count": 0,
+                        "posted_count": 0,
+                        "already_posted_count": 0,
+                        "skipped_count": 0,
+                        "skipped_missing_anchor_count": 0,
+                        "skipped_invalid_selection_count": 0,
+                        "failed_count": 0,
+                        "invalid_response_count": 0
+                    }
+                },
+                "severity_breakdown": {
+                    "bug": {
+                        "approved_count": 1,
+                        "ready_count": 1,
+                        "missing_anchor_count": 0,
+                        "posted_count": 0,
+                        "already_posted_count": 0,
+                        "skipped_count": 0,
+                        "skipped_missing_anchor_count": 0,
+                        "skipped_invalid_selection_count": 0,
+                        "failed_count": 0,
+                        "invalid_response_count": 0
+                    }
+                }
             }
         }
         self._assert_valid(payload, "posting_manifest.schema.json")
@@ -734,8 +768,12 @@ class TestContracts(unittest.TestCase):
             "run_id": "20260414T220000Z-1234-abcd1234",
             "project": "group/project",
             "mr_iid": 123,
+            "approved_all": False,
+            "approved_finding_numbers": [1],
+            "invalid_finding_numbers": [],
             "started_at": "2026-04-14T22:01:00Z",
             "finished_at": "2026-04-14T22:01:03Z",
+            "duration_ms": 3000,
             "posted_count": 1,
             "already_posted_count": 0,
             "skipped_count": 0,
@@ -744,6 +782,12 @@ class TestContracts(unittest.TestCase):
                 {
                     "finding_number": 1,
                     "candidate_id": "F1",
+                    "persona": "security",
+                    "severity": "bug",
+                    "file": "internal/auth/jwt.go",
+                    "line": 12,
+                    "message": "Comment body.",
+                    "prepared_status": "ready",
                     "fingerprint": "abc123",
                     "status": "posted",
                     "payload_file": "/tmp/ccr/run/comment_payloads/001-F1.request.json",
@@ -753,7 +797,57 @@ class TestContracts(unittest.TestCase):
                     "error": None,
                     "attempts": 1
                 }
-            ]
+            ],
+            "summary": {
+                "approved_all": False,
+                "approved_count": 1,
+                "ready_count": 1,
+                "missing_anchor_count": 0,
+                "invalid_count": 0,
+                "ready_resolved_count": 1,
+                "ready_resolution_rate": 1.0,
+                "posted_count": 1,
+                "already_posted_count": 0,
+                "skipped_count": 0,
+                "failed_count": 0,
+                "total_attempts": 1,
+                "status_counts": {
+                    "posted": 1,
+                    "already_posted": 0,
+                    "skipped_missing_anchor": 0,
+                    "skipped_invalid_selection": 0,
+                    "failed": 0,
+                    "invalid_response": 0
+                },
+                "persona_breakdown": {
+                    "security": {
+                        "approved_count": 1,
+                        "ready_count": 1,
+                        "missing_anchor_count": 0,
+                        "posted_count": 1,
+                        "already_posted_count": 0,
+                        "skipped_count": 0,
+                        "skipped_missing_anchor_count": 0,
+                        "skipped_invalid_selection_count": 0,
+                        "failed_count": 0,
+                        "invalid_response_count": 0
+                    }
+                },
+                "severity_breakdown": {
+                    "bug": {
+                        "approved_count": 1,
+                        "ready_count": 1,
+                        "missing_anchor_count": 0,
+                        "posted_count": 1,
+                        "already_posted_count": 0,
+                        "skipped_count": 0,
+                        "skipped_missing_anchor_count": 0,
+                        "skipped_invalid_selection_count": 0,
+                        "failed_count": 0,
+                        "invalid_response_count": 0
+                    }
+                }
+            }
         }
         self._assert_valid(payload, "posting_result.schema.json")
 

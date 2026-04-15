@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -339,6 +340,202 @@ def _load_context(manifest_file: Path, approval_file_override: Path | None) -> t
     return manifest, summary, approval, str(approval["project"]), int(approval["mr_iid"]), diff_refs, verified_findings
 
 
+_POSTING_RESULT_STATUSES = (
+    "posted",
+    "already_posted",
+    "skipped_missing_anchor",
+    "skipped_invalid_selection",
+    "failed",
+    "invalid_response",
+)
+
+
+def _ratio(numerator: int, denominator: int) -> float | None:
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 4)
+
+
+
+def _normalize_metric_label(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    return text or None
+
+
+
+def _normalize_line(value: Any) -> int | None:
+    try:
+        line = int(value)
+    except (TypeError, ValueError):
+        return None
+    return line if line >= 1 else None
+
+
+
+def _finding_metric_context(finding: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(finding, dict):
+        return {
+            "candidate_id": None,
+            "persona": None,
+            "severity": None,
+            "file": None,
+            "line": None,
+            "message": None,
+            "prepared_status": None,
+            "fingerprint": None,
+            "payload_file": None,
+        }
+    return {
+        "candidate_id": str(finding.get("candidate_id") or "") or None,
+        "persona": _normalize_metric_label(finding.get("persona")),
+        "severity": _normalize_metric_label(finding.get("severity")),
+        "file": str(finding.get("file") or "") or None,
+        "line": _normalize_line(finding.get("line")),
+        "message": str(finding.get("message") or "") or None,
+        "prepared_status": str(finding.get("status") or "") or None,
+        "fingerprint": str(finding.get("fingerprint") or "") or None,
+        "payload_file": str(finding.get("payload_file") or "") or None,
+    }
+
+
+
+def _empty_breakdown_bucket() -> dict[str, int]:
+    return {
+        "approved_count": 0,
+        "ready_count": 0,
+        "missing_anchor_count": 0,
+        "posted_count": 0,
+        "already_posted_count": 0,
+        "skipped_count": 0,
+        "skipped_missing_anchor_count": 0,
+        "skipped_invalid_selection_count": 0,
+        "failed_count": 0,
+        "invalid_response_count": 0,
+    }
+
+
+
+def _record_prepared_breakdown(breakdown: dict[str, dict[str, int]], label: str | None, finding: dict[str, Any]) -> None:
+    if not label:
+        return
+    bucket = breakdown.setdefault(label, _empty_breakdown_bucket())
+    bucket["approved_count"] += 1
+    status = str(finding.get("status") or "")
+    if status == "ready":
+        bucket["ready_count"] += 1
+    elif status == "missing_anchor":
+        bucket["missing_anchor_count"] += 1
+
+
+
+def _record_result_breakdown(breakdown: dict[str, dict[str, int]], label: str | None, result: dict[str, Any]) -> None:
+    if not label:
+        return
+    bucket = breakdown.setdefault(label, _empty_breakdown_bucket())
+    status = str(result.get("status") or "")
+    if status == "posted":
+        bucket["posted_count"] += 1
+    elif status == "already_posted":
+        bucket["already_posted_count"] += 1
+    elif status == "skipped_missing_anchor":
+        bucket["skipped_count"] += 1
+        bucket["skipped_missing_anchor_count"] += 1
+    elif status == "skipped_invalid_selection":
+        bucket["skipped_count"] += 1
+        bucket["skipped_invalid_selection_count"] += 1
+    elif status == "invalid_response":
+        bucket["failed_count"] += 1
+        bucket["invalid_response_count"] += 1
+    elif status == "failed":
+        bucket["failed_count"] += 1
+
+
+
+def _build_dimension_breakdown(approved_findings: list[dict[str, Any]], results: list[dict[str, Any]], *, field: str) -> dict[str, dict[str, int]]:
+    breakdown: dict[str, dict[str, int]] = {}
+    findings_by_number = {
+        int(item.get("finding_number") or 0): item
+        for item in approved_findings
+        if isinstance(item, dict) and int(item.get("finding_number") or 0) > 0
+    }
+    for finding in approved_findings:
+        if not isinstance(finding, dict):
+            continue
+        _record_prepared_breakdown(breakdown, _normalize_metric_label(finding.get(field)), finding)
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        label = _normalize_metric_label(result.get(field))
+        if label is None:
+            finding = findings_by_number.get(int(result.get("finding_number") or 0))
+            if finding is not None:
+                label = _normalize_metric_label(finding.get(field))
+        _record_result_breakdown(breakdown, label, result)
+    return {key: breakdown[key] for key in sorted(breakdown)}
+
+
+
+def _build_prepare_summary(approved_findings: list[dict[str, Any]], invalid_numbers: list[int]) -> dict[str, Any]:
+    ready_count = sum(1 for item in approved_findings if str(item.get("status") or "") == "ready")
+    missing_anchor_count = sum(1 for item in approved_findings if str(item.get("status") or "") == "missing_anchor")
+    return {
+        "approved_count": len(approved_findings),
+        "ready_count": ready_count,
+        "missing_anchor_count": missing_anchor_count,
+        "invalid_count": len(invalid_numbers),
+        "status_counts": {
+            "ready": ready_count,
+            "missing_anchor": missing_anchor_count,
+        },
+        "persona_breakdown": _build_dimension_breakdown(approved_findings, [], field="persona"),
+        "severity_breakdown": _build_dimension_breakdown(approved_findings, [], field="severity"),
+    }
+
+
+
+def _build_result_summary(
+    prepared: dict[str, Any],
+    results: list[dict[str, Any]],
+    *,
+    posted_count: int,
+    already_posted_count: int,
+    skipped_count: int,
+    failed_count: int,
+) -> dict[str, Any]:
+    approved_findings = [item for item in (prepared.get("approved_findings") or []) if isinstance(item, dict)]
+    invalid_numbers = _dedupe_ints(list(prepared.get("invalid_finding_numbers") or []))
+    prepare_summary = _build_prepare_summary(approved_findings, invalid_numbers)
+    status_counts = {status: 0 for status in _POSTING_RESULT_STATUSES}
+    total_attempts = 0
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        status = str(result.get("status") or "")
+        if status in status_counts:
+            status_counts[status] += 1
+        total_attempts += int(result.get("attempts") or 0)
+    ready_count = int(prepare_summary["ready_count"])
+    ready_resolved_count = posted_count + already_posted_count
+    return {
+        "approved_all": bool(prepared.get("approved_all")),
+        "approved_count": int(prepare_summary["approved_count"]),
+        "ready_count": ready_count,
+        "missing_anchor_count": int(prepare_summary["missing_anchor_count"]),
+        "invalid_count": int(prepare_summary["invalid_count"]),
+        "ready_resolved_count": ready_resolved_count,
+        "ready_resolution_rate": _ratio(ready_resolved_count, ready_count),
+        "posted_count": posted_count,
+        "already_posted_count": already_posted_count,
+        "skipped_count": skipped_count,
+        "failed_count": failed_count,
+        "total_attempts": total_attempts,
+        "status_counts": status_counts,
+        "persona_breakdown": _build_dimension_breakdown(approved_findings, results, field="persona"),
+        "severity_breakdown": _build_dimension_breakdown(approved_findings, results, field="severity"),
+    }
+
+
+
 def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None = None) -> dict[str, Any]:
     manifest, _summary, approval, project, mr_iid, diff_refs, verified_findings = _load_context(manifest_file, approval_file)
     verified_by_number = {int(finding["finding_number"]): finding for finding in verified_findings}
@@ -357,8 +554,6 @@ def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None 
     _cleanup_comments_dir(comments_dir)
 
     approved_findings: list[dict[str, Any]] = []
-    ready_count = 0
-    missing_anchor_count = 0
     for number in requested_numbers:
         finding = verified_by_number.get(number)
         if finding is None:
@@ -370,6 +565,8 @@ def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None 
         item = {
             "finding_number": number,
             "candidate_id": str(finding.get("candidate_id") or ""),
+            "persona": _normalize_metric_label(finding.get("persona")),
+            "severity": _normalize_metric_label(finding.get("severity")),
             "file": file_path,
             "line": line,
             "message": str(finding.get("message") or ""),
@@ -377,7 +574,6 @@ def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None 
         }
         if anchor is None:
             item["status"] = "missing_anchor"
-            missing_anchor_count += 1
         else:
             comment_body = _build_comment_body(finding, fingerprint=fingerprint, run_id=str(manifest["run_id"]))
             request_path = _request_payload_path(comments_dir, finding)
@@ -389,7 +585,6 @@ def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None 
             item["status"] = "ready"
             item["payload_file"] = str(request_path)
             item["anchor"] = anchor
-            ready_count += 1
         approved_findings.append(item)
 
     payload = {
@@ -403,12 +598,7 @@ def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None 
         "invalid_finding_numbers": invalid_numbers,
         "diff_refs": diff_refs,
         "approved_findings": approved_findings,
-        "summary": {
-            "approved_count": len(approved_findings),
-            "ready_count": ready_count,
-            "missing_anchor_count": missing_anchor_count,
-            "invalid_count": len(invalid_numbers),
-        },
+        "summary": _build_prepare_summary(approved_findings, invalid_numbers),
     }
     _write_json(Path(manifest["posting_manifest_file"]), payload)
     return payload
@@ -511,6 +701,7 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
     project = str(prepared["project"])
     mr_iid = int(prepared["mr_iid"])
     started_at = _utc_now()
+    started_mono = time.monotonic()
 
     discussions = _list_discussions(glab_bin, project, mr_iid)
     existing = _extract_existing_index(discussions)
@@ -535,10 +726,8 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
             results.append(
                 {
                     "finding_number": number,
-                    "candidate_id": None,
-                    "fingerprint": None,
+                    **_finding_metric_context(None),
                     "status": "skipped_invalid_selection",
-                    "payload_file": None,
                     "response_file": None,
                     "discussion_id": None,
                     "note_id": None,
@@ -554,10 +743,8 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
             results.append(
                 {
                     "finding_number": number,
-                    "candidate_id": None,
-                    "fingerprint": None,
+                    **_finding_metric_context(None),
                     "status": "skipped_invalid_selection",
-                    "payload_file": None,
                     "response_file": None,
                     "discussion_id": None,
                     "note_id": None,
@@ -567,8 +754,9 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
             )
             continue
 
-        fingerprint = str(finding.get("fingerprint") or "")
-        payload_file = str(finding.get("payload_file") or "") or None
+        context = _finding_metric_context(finding)
+        fingerprint = str(context["fingerprint"] or "")
+        payload_file = str(context["payload_file"] or "") or None
         response_file = str(_response_payload_path(comments_dir, finding))
 
         if str(finding.get("status") or "") == "missing_anchor":
@@ -576,10 +764,8 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
             results.append(
                 {
                     "finding_number": number,
-                    "candidate_id": str(finding.get("candidate_id") or "") or None,
-                    "fingerprint": fingerprint or None,
+                    **context,
                     "status": "skipped_missing_anchor",
-                    "payload_file": payload_file,
                     "response_file": None,
                     "discussion_id": None,
                     "note_id": None,
@@ -593,14 +779,11 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
         if existing_hit is not None:
             already_posted_count += 1
             _write_response_snapshot(Path(response_file), _ensure_dict(existing_hit["discussion"], label="existing discussion"))
-            finding["status"] = "already_posted"
             results.append(
                 {
                     "finding_number": number,
-                    "candidate_id": str(finding.get("candidate_id") or "") or None,
-                    "fingerprint": fingerprint or None,
+                    **context,
                     "status": "already_posted",
-                    "payload_file": payload_file,
                     "response_file": response_file,
                     "discussion_id": existing_hit.get("discussion_id"),
                     "note_id": existing_hit.get("note_id"),
@@ -615,8 +798,7 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
             results.append(
                 {
                     "finding_number": number,
-                    "candidate_id": str(finding.get("candidate_id") or "") or None,
-                    "fingerprint": fingerprint or None,
+                    **context,
                     "status": "failed",
                     "payload_file": None,
                     "response_file": None,
@@ -646,13 +828,10 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
                 if existing_hit is not None:
                     already_posted_count += 1
                     _write_response_snapshot(Path(response_file), _ensure_dict(existing_hit["discussion"], label="existing discussion"))
-                    finding["status"] = "already_posted"
                     final_result = {
                         "finding_number": number,
-                        "candidate_id": str(finding.get("candidate_id") or "") or None,
-                        "fingerprint": fingerprint or None,
+                        **context,
                         "status": "already_posted",
-                        "payload_file": payload_file,
                         "response_file": response_file,
                         "discussion_id": existing_hit.get("discussion_id"),
                         "note_id": existing_hit.get("note_id"),
@@ -664,10 +843,8 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
                     failed_count += 1
                     final_result = {
                         "finding_number": number,
-                        "candidate_id": str(finding.get("candidate_id") or "") or None,
-                        "fingerprint": fingerprint or None,
+                        **context,
                         "status": "failed",
-                        "payload_file": payload_file,
                         "response_file": None,
                         "discussion_id": None,
                         "note_id": None,
@@ -687,10 +864,8 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
             posted_count += 1
             final_result = {
                 "finding_number": number,
-                "candidate_id": str(finding.get("candidate_id") or "") or None,
-                "fingerprint": fingerprint or None,
+                **context,
                 "status": "posted",
-                "payload_file": payload_file,
                 "response_file": response_file,
                 "discussion_id": discussion_id,
                 "note_id": note_id,
@@ -703,10 +878,8 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
             failed_count += 1
             final_result = {
                 "finding_number": number,
-                "candidate_id": str(finding.get("candidate_id") or "") or None,
-                "fingerprint": fingerprint or None,
+                **context,
                 "status": "invalid_response",
-                "payload_file": payload_file,
                 "response_file": response_file,
                 "discussion_id": None,
                 "note_id": None,
@@ -718,10 +891,8 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
             failed_count += 1
             final_result = {
                 "finding_number": number,
-                "candidate_id": str(finding.get("candidate_id") or "") or None,
-                "fingerprint": fingerprint or None,
+                **context,
                 "status": "failed",
-                "payload_file": payload_file,
                 "response_file": None,
                 "discussion_id": None,
                 "note_id": None,
@@ -732,17 +903,31 @@ def apply_posting_plan(manifest_file: Path, *, approval_file: Path | None = None
         results.append(final_result)
 
     _write_json(Path(manifest["posting_manifest_file"]), prepared)
+    finished_at = _utc_now()
+    duration_ms = int((time.monotonic() - started_mono) * 1000)
     result_payload = {
         "contract_version": _POSTING_RESULT_CONTRACT,
         "run_id": manifest["run_id"],
         "project": project,
         "mr_iid": mr_iid,
+        "approved_all": bool(prepared.get("approved_all")),
+        "approved_finding_numbers": approved_numbers,
+        "invalid_finding_numbers": sorted(invalid_numbers),
         "started_at": started_at,
-        "finished_at": _utc_now(),
+        "finished_at": finished_at,
+        "duration_ms": duration_ms,
         "posted_count": posted_count,
         "already_posted_count": already_posted_count,
         "skipped_count": skipped_count,
         "failed_count": failed_count,
+        "summary": _build_result_summary(
+            prepared,
+            results,
+            posted_count=posted_count,
+            already_posted_count=already_posted_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count,
+        ),
         "results": results,
     }
     _write_json(Path(manifest["posting_results_file"]), result_payload)

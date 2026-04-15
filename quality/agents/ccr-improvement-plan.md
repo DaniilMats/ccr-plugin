@@ -28,6 +28,7 @@ As of 2026-04-15:
 - Phase 4 Step 1 is complete: `llm_invocation` / `reviewers_manifest` / `run_metrics` contracts plus `run_metrics_file` surfaced across manifest/launch/summary/watch artifacts
 - Phase 4 Step 2 is complete: reviewer/verifier wrapper outputs now carry normalized `llm_invocation` telemetry with provider, tokens, duration, thread, and schema-retry metadata
 - Phase 4 Step 3 is complete: `ccr_run.py` now propagates reviewer/verifier telemetry into `reviewers.json`, `status.json`, `trace.jsonl`, and richer `run_metrics.json` aggregates (provider breakdowns, schema retry counts, duplicate merge rate, rejection rate, anchor failure rate)
+- Phase 4 Step 4 is complete: `ccr_post_comments.py` now writes richer `posting_results.json` summaries with prepared/apply counts, per-status publish metrics, attempt totals, and persona/severity breakdowns for deterministic post-run observability
 - Detailed Phase 2 implementation plan: `quality/agents/ccr-phase2-implementation-plan.md`
 - Detailed Phase 3 implementation plan: `quality/agents/ccr-phase3-implementation-plan.md`
 - Detailed Phase 4 implementation plan (non-CI rollout): `quality/agents/ccr-phase4-implementation-plan.md`

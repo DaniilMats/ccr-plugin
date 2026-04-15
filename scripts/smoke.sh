@@ -421,12 +421,44 @@ manifest = json.loads(Path(sys.argv[2]).read_text())
 approval = json.loads(Path(manifest["posting_approval_file"]).read_text())
 assert prepared["contract_version"] == "ccr.posting_manifest.v1"
 assert prepared["summary"]["ready_count"] == 1
+assert prepared["summary"]["status_counts"]["ready"] == 1
 assert approval["project"] == "group/project"
 assert approval["mr_iid"] == 200
 assert approval["approved_all"] is False
 assert approval["source"] == "user_selection"
 assert approval["approved_at"]
 assert Path(manifest["posting_manifest_file"]).is_file()
+PY
+python3 - <<'PY' "$TMP_DIR/fake_glab"
+import sys
+from pathlib import Path
+script = Path(sys.argv[1])
+script.write_text(
+    "#!/usr/bin/env python3\n"
+    "import json\n"
+    "import sys\n"
+    "is_post = '-X' in sys.argv and sys.argv[sys.argv.index('-X') + 1] == 'POST'\n"
+    "if is_post:\n"
+    "    sys.stdout.write(json.dumps({'id': 'discussion-1', 'notes': [{'id': 42, 'type': 'DiffNote', 'body': 'Posted.'}] }))\n"
+    "else:\n"
+    "    sys.stdout.write('[]')\n",
+    encoding="utf-8",
+)
+script.chmod(0o755)
+PY
+python3 quality/scripts/ccr_post_comments.py \
+  --manifest-file "$TMP_DIR/phase2_manifest.json" \
+  --glab-bin "$TMP_DIR/fake_glab" \
+  --apply > "$TMP_DIR/posting_apply.json"
+python3 - <<'PY' "$TMP_DIR/posting_apply.json"
+import json, sys
+from pathlib import Path
+payload = json.loads(Path(sys.argv[1]).read_text())
+assert payload["contract_version"] == "ccr.posting_result.v1"
+assert payload["posted_count"] == 1
+assert payload["summary"]["ready_resolution_rate"] == 1.0
+assert payload["summary"]["status_counts"]["posted"] == 1
+assert payload["summary"]["total_attempts"] == 1
 PY
 
 echo "[smoke] ok"
