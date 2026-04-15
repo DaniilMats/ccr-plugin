@@ -1,4 +1,4 @@
-Review the code artifact for logic and correctness issues only: unchecked errors, nil pointer dereferences, off-by-one errors, incorrect conditionals, and invariant violations. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret local invariants, neighboring tests, and established package patterns. Skip style, performance, security, and concurrency concerns — those are reviewed separately. Return a JSON object with findings for each issue found, or an empty findings array if there are none.
+Review the code artifact for logic and correctness issues only: unchecked errors, nil pointer dereferences, off-by-one errors, incorrect conditionals, and invariant violations. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret local invariants, neighboring tests, and established package patterns. When a Semantic Guardrails section is present below, treat it as a mandatory counterexample checklist before declaring the diff correct. Tests added in the same diff are not independent proof that the implementation preserves the invariant. Skip style, performance, security, and concurrency concerns — those are reviewed separately. Return a JSON object with findings for each issue found, or an empty findings array if there are none.
 
 ---
 
@@ -68,7 +68,27 @@ Finding:
 
 ---
 
-Example 4 — No logic issues found
+Example 4 — Conditional fix drops a required operand
+
+Input:
+```diff
+--- a/internal/widget/history.go
++++ b/internal/widget/history.go
+@@ -22,7 +22,10 @@ func buildHistoryWidget(omitOnEmpty bool, hasTransactions bool, untrusted bool) Widget {
+ 	if untrusted {
+-		return Widget{State: "untrusted", Show: true}
++		show := !omitOnEmpty
++		return Widget{State: "untrusted", Show: show}
+ 	}
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/widget/history.go","line":24,"message":"The new untrusted-branch fix ignores hasTransactions and turns visibility into a pure !omitOnEmpty toggle. If omitOnEmpty is enabled and the user does have transactions, the widget would still be hidden, which contradicts the surrounding data-dependent invariant. Preserve the data-presence operand here as well (for example, use !omitOnEmpty || hasTransactions)."}],"summary":"The patch changes a data-dependent visibility rule into an unconditional toggle and introduces a correctness regression for users who still have transactions."}
+
+---
+
+Example 5 — No logic issues found
 
 Input:
 ```diff
@@ -99,6 +119,8 @@ Finding:
 ## Repository / Package Context
 
 {review_context}
+
+{semantic_guardrails}
 
 {style_guide_section}
 

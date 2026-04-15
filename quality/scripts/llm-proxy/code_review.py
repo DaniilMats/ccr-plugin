@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import json
+import re
 import subprocess
 from typing import Optional
 
@@ -273,10 +274,129 @@ def _format_sa_for_prompt(sa_data: dict, persona: Optional[str]) -> str:
 
 # ── Prompt construction ───────────────────────────────────────────────────────
 
+_SEMANTIC_GUARDRAIL_PERSONAS = {None, "logic", "requirements"}
+_SEMANTIC_REQUIREMENT_CUES = (
+    "only if",
+    "only when",
+    "unless",
+    "except",
+    "if ",
+    "when ",
+    "empty",
+    "non-empty",
+    "hide",
+    "show",
+    "visible",
+    "hidden",
+    "state",
+    "placeholder",
+    "loading",
+    "fallback",
+)
+_SEMANTIC_STATE_TERMS = (
+    "trusted",
+    "untrusted",
+    "loading",
+    "placeholder",
+    "fallback",
+    "empty",
+    "non-empty",
+    "history",
+    "transaction",
+    "transactions",
+    "state",
+    "visible",
+    "hidden",
+    "show",
+    "hide",
+)
+_SEMANTIC_IDENTIFIER_RE = re.compile(
+    r"\b(?:is|has|should|can|allow|omit|hide|show|enable|disable|use|need|needs|require|requires)[A-Z][A-Za-z0-9]*\b"
+    r"|\b(?:is|has|should|can|allow|omit|hide|show|enable|disable|use|need|needs|require|requires)_[a-z0-9_]+\b"
+    r"|\b[a-z][a-z0-9_]*(?:_enabled|_disabled|_empty|_present|_visible|_hidden)\b"
+)
+
+
 def _load_text(path: str) -> str:
     """Read a text file and return its contents."""
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def _extract_semantic_requirement_clauses(requirements_text: str, limit: int = 3) -> list[str]:
+    clauses: list[str] = []
+    for raw_line in requirements_text.splitlines():
+        line = " ".join(raw_line.strip().lstrip("-*•").split())
+        if not line:
+            continue
+        lowered = line.lower()
+        if any(cue in lowered for cue in _SEMANTIC_REQUIREMENT_CUES):
+            clauses.append(line)
+            if len(clauses) >= limit:
+                break
+    return clauses
+
+
+
+def _extract_semantic_identifiers(text: str, limit: int = 8) -> list[str]:
+    identifiers: list[str] = []
+    for match in _SEMANTIC_IDENTIFIER_RE.finditer(text):
+        token = match.group(0)
+        if token not in identifiers:
+            identifiers.append(token)
+        if len(identifiers) >= limit:
+            break
+    return identifiers
+
+
+
+def _extract_semantic_state_terms(text: str, limit: int = 8) -> list[str]:
+    lowered = text.lower()
+    return [term for term in _SEMANTIC_STATE_TERMS if term in lowered][:limit]
+
+
+
+def _build_semantic_guardrails(diff: str, requirements_text: str, persona: Optional[str] = None) -> str:
+    if persona not in _SEMANTIC_GUARDRAIL_PERSONAS:
+        return ""
+
+    stripped_requirements = requirements_text.strip()
+    if not stripped_requirements:
+        return ""
+
+    clauses = _extract_semantic_requirement_clauses(stripped_requirements)
+    identifiers = _extract_semantic_identifiers(stripped_requirements + "\n" + diff)
+    state_terms = _extract_semantic_state_terms(stripped_requirements + "\n" + diff)
+
+    lines = ["## Semantic Guardrails", ""]
+    if clauses:
+        lines.append("Detected conditional requirement clauses:")
+        for clause in clauses:
+            lines.append(f"- {clause}")
+        lines.append("")
+
+    focus_terms: list[str] = []
+    if identifiers:
+        focus_terms.append("symbols: " + ", ".join(identifiers))
+    if state_terms:
+        focus_terms.append("states/data: " + ", ".join(state_terms))
+    if focus_terms:
+        lines.append("Focus terms: " + " · ".join(focus_terms))
+        lines.append("")
+
+    lines.extend(
+        [
+            "Before deciding the change is correct:",
+            "- Build the smallest truth table covering the flag(s), data presence, and UI/runtime state mentioned above.",
+            "- Compare sibling branches for predicate parity; if one path uses both a flag and a data-presence check while another drops one operand, treat that as suspicious.",
+            "- Do not collapse a data-dependent rule into a pure flag toggle (or the reverse) without evidence that the requirement really changed.",
+            "- If a fallback/placeholder/loading/untrusted branch now depends on data emptiness, verify where that data comes from and whether the patch adds a new fetch or error path.",
+            "- Treat tests added in the same diff as non-independent evidence; they can mirror the same wrong assumption as the implementation.",
+            "- If one plausible counterexample remains, report it instead of declaring the behavior correct.",
+        ]
+    )
+    return "\n".join(lines)
+
 
 
 def _build_prompt(
@@ -309,12 +429,19 @@ def _build_prompt(
     except OSError:
         style_guide_section = ""
 
+    semantic_guardrails_text = _build_semantic_guardrails(
+        diff,
+        requirements_text=requirements_text,
+        persona=persona,
+    )
+
     # Fill all known placeholders using str.replace (safe for JSON-brace-heavy templates)
     result = template.replace("{diff}", diff)
     result = result.replace("{static_analysis}", static_analysis_text)
     result = result.replace("{style_guide_section}", style_guide_section)
     result = result.replace("{requirements}", requirements_text)
     result = result.replace("{review_context}", review_context_text)
+    result = result.replace("{semantic_guardrails}", semantic_guardrails_text)
     return result
 
 

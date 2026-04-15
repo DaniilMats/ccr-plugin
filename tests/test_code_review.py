@@ -58,6 +58,68 @@ class TestCodeReview(unittest.TestCase):
         self.assertEqual(requirements_text, "")
         self.assertEqual(error_text, "(static analysis unavailable: boom)")
 
+    def test_build_semantic_guardrails_for_stateful_visibility_requirements(self) -> None:
+        diff = """
+--- a/internal/widget/history.go
++++ b/internal/widget/history.go
+@@ -22,7 +22,10 @@ func buildHistoryWidget(omitOnEmpty bool, hasTransactions bool, untrusted bool) Widget {
+ 	if untrusted {
+-		return Widget{State: \"untrusted\", Show: true}
++		show := !omitOnEmpty
++		return Widget{State: \"untrusted\", Show: show}
+ 	}
+ }
+"""
+        requirements = (
+            "omitOnEmpty hides the widget only when history is empty.\n"
+            "If the user has transactions, keep showing the untrusted placeholder.\n"
+        )
+
+        guardrails = self.module._build_semantic_guardrails(diff, requirements, persona="requirements")
+        security_guardrails = self.module._build_semantic_guardrails(diff, requirements, persona="security")
+
+        self.assertIn("## Semantic Guardrails", guardrails)
+        self.assertIn("omitOnEmpty", guardrails)
+        self.assertIn("truth table", guardrails)
+        self.assertIn("sibling branches", guardrails)
+        self.assertIn("tests added in the same diff", guardrails)
+        self.assertEqual(security_guardrails, "")
+
+    def test_build_prompt_includes_semantic_guardrails_for_requirements_and_logic(self) -> None:
+        diff = "+show := !omitOnEmpty\n"
+        requirements = "omitOnEmpty hides the widget only when history is empty."
+
+        requirements_prompt = self.module._build_prompt(
+            diff=diff,
+            style_guide_path=str(self.module.DEFAULT_STYLE_GUIDE_PATH),
+            persona="requirements",
+            static_analysis_text="",
+            requirements_text=requirements,
+            review_context_text="Nearby tests cover trusted and untrusted branches.",
+        )
+        logic_prompt = self.module._build_prompt(
+            diff=diff,
+            style_guide_path=str(self.module.DEFAULT_STYLE_GUIDE_PATH),
+            persona="logic",
+            static_analysis_text="",
+            requirements_text=requirements,
+            review_context_text="Nearby tests cover trusted and untrusted branches.",
+        )
+        security_prompt = self.module._build_prompt(
+            diff=diff,
+            style_guide_path=str(self.module.DEFAULT_STYLE_GUIDE_PATH),
+            persona="security",
+            static_analysis_text="",
+            requirements_text=requirements,
+            review_context_text="Nearby tests cover trusted and untrusted branches.",
+        )
+
+        self.assertIn("## Semantic Guardrails", requirements_prompt)
+        self.assertIn("## Semantic Guardrails", logic_prompt)
+        self.assertIn("omitOnEmpty", requirements_prompt)
+        self.assertIn("truth table", logic_prompt)
+        self.assertNotIn("## Semantic Guardrails", security_prompt)
+
     def test_extract_review_output_handles_code_fences_and_invalid_json(self) -> None:
         parsed = self.module._extract_review_output(
             {

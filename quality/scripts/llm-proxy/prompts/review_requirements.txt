@@ -1,4 +1,4 @@
-Review the code artifact against the provided requirements for compliance gaps only: missing validations for required fields, unhandled edge cases specified in the requirements, behavior that diverges from the spec, and inputs or states the requirements explicitly address but the code ignores. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret local naming, neighboring tests, and established package patterns before deciding that behavior diverges from the spec. Skip style, performance, security, and concurrency concerns — those are reviewed separately. Return a JSON object with findings for each requirements gap found, or an empty findings array if the artifact is compliant.
+Review the code artifact against the provided requirements for compliance gaps only: missing validations for required fields, unhandled edge cases specified in the requirements, behavior that diverges from the spec, and inputs or states the requirements explicitly address but the code ignores. The artifact may be a real diff or a synthetic full-file/package diff used for audit mode. Use the repository/package context to interpret local naming, neighboring tests, and established package patterns before deciding that behavior diverges from the spec. When a Semantic Guardrails section is present below, treat it as a mandatory counterexample checklist before declaring the diff compliant. Tests added in the same diff are not independent proof that the implementation matches the spec. Skip style, performance, security, and concurrency concerns — those are reviewed separately. Return a JSON object with findings for each requirements gap found, or an empty findings array if the artifact is compliant.
 
 ---
 
@@ -79,7 +79,27 @@ Finding:
 
 ---
 
-Example 4 — No requirements gaps found
+Example 4 — Data-dependent visibility rule collapsed into a pure flag toggle
+
+Input:
+```diff
+--- a/internal/widget/history.go
++++ b/internal/widget/history.go
+@@ -22,7 +22,10 @@ func buildHistoryWidget(omitOnEmpty bool, hasTransactions bool, untrusted bool) Widget {
+ 	if untrusted {
+-		return Widget{State: "untrusted", Show: true}
++		show := !omitOnEmpty
++		return Widget{State: "untrusted", Show: show}
+ 	}
+ }
+```
+
+Finding:
+{"findings":[{"severity":"bug","file":"internal/widget/history.go","line":24,"message":"The requirements say omitOnEmpty hides the widget only when history is empty, but the untrusted branch now uses show := !omitOnEmpty without checking whether transactions exist. That collapses a data-dependent rule into a pure flag toggle: users with history would incorrectly lose the untrusted placeholder whenever omitOnEmpty is enabled. Preserve the emptiness predicate here as well (for example, use the same hasTransactions-based condition as the trusted path)."}],"summary":"The diff diverges from the spec by turning an emptiness-dependent visibility rule into an unconditional hide/show toggle on the untrusted branch."}
+
+---
+
+Example 5 — No requirements gaps found
 
 Input:
 ```diff
@@ -123,6 +143,8 @@ Finding:
 ## Repository / Package Context
 
 {review_context}
+
+{semantic_guardrails}
 
 {style_guide_section}
 
