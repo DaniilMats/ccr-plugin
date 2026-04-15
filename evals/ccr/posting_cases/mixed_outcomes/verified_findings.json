@@ -1,0 +1,26 @@
+{
+  "contract_version": "ccr.verified_findings.v1",
+  "verified_findings": [
+    {
+      "finding_number": 1,
+      "candidate_id": "F1",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/auth/jwt.go",
+      "line": 2,
+      "message": "Validate the token before returning."
+    },
+    {
+      "finding_number": 2,
+      "candidate_id": "F2",
+      "persona": "performance",
+      "severity": "warning",
+      "file": "internal/auth/jwt.go",
+      "line": 99,
+      "message": "This line is not in the diff."
+    }
+  ],
+  "summary": {
+    "verified_count": 2
+  }
+}

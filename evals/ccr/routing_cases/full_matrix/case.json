@@ -1,0 +1,5 @@
+{
+  "suite": "routing",
+  "input_file": "tests/fixtures/routing/route_input_full_matrix.json",
+  "expected_file": "tests/fixtures/routing/expected_route_plan_full_matrix.json"
+}

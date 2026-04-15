@@ -1,0 +1,75 @@
+{
+  "contract_version": "ccr.candidates_manifest.v1",
+  "candidates": [
+    {
+      "contract_version": "ccr.consolidated_candidate.v1",
+      "candidate_id": "F1",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/auth/jwt.go",
+      "line": 12,
+      "message": "`ValidateToken` skips JWT token expiry validation.\nAdditional reviewer notes:\n- JWT token expiry validation is missing in ValidateToken.",
+      "reviewers": [
+        "logic_p1",
+        "security_p1"
+      ],
+      "supporting_personas": [
+        "logic"
+      ],
+      "consensus": "2/3",
+      "support_count": 2,
+      "available_pass_count": 3,
+      "symbol": "ValidateToken",
+      "normalized_category": "expiry-jwt-skips-token-validation",
+      "anchor_status": "unknown",
+      "evidence_sources": [
+        "reviewer",
+        "diff_hunk",
+        "gosec"
+      ],
+      "source_findings": [
+        {
+          "pass_name": "security_p1",
+          "provider": "codex",
+          "persona": "security",
+          "file": "internal/auth/jwt.go",
+          "line": 12,
+          "severity": "bug",
+          "message": "`ValidateToken` skips JWT token expiry validation."
+        },
+        {
+          "pass_name": "logic_p1",
+          "provider": "gemini",
+          "persona": "logic",
+          "file": "internal/auth/jwt.go",
+          "line": 13,
+          "severity": "warning",
+          "message": "JWT token expiry validation is missing in ValidateToken."
+        }
+      ],
+      "prefilter": {
+        "ready_for_verification": true,
+        "drop_reasons": []
+      },
+      "evidence_bundle": {
+        "diff_hunk": null,
+        "file_context": null,
+        "requirements_excerpt": null,
+        "static_analysis": [
+          {
+            "tool": "gosec",
+            "file": "internal/auth/jwt.go",
+            "line": 12,
+            "message": "Token validation path does not enforce expiry checks.",
+            "code": "G999"
+          }
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "candidate_count": 1,
+    "source_finding_count": 2,
+    "skipped_invalid_finding_count": 0
+  }
+}

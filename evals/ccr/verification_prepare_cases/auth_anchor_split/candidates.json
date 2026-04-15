@@ -1,0 +1,126 @@
+{
+  "contract_version": "ccr.candidates_manifest.v1",
+  "candidates": [
+    {
+      "contract_version": "ccr.consolidated_candidate.v1",
+      "candidate_id": "F1",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/auth/jwt.go",
+      "line": 3,
+      "message": "ValidateToken now records request scope without validating expiry.",
+      "reviewers": ["security_p1"],
+      "supporting_personas": [],
+      "consensus": "1/3",
+      "support_count": 1,
+      "available_pass_count": 3,
+      "symbol": "ValidateToken",
+      "normalized_category": "token-validation",
+      "anchor_status": "unknown",
+      "evidence_sources": ["reviewer"],
+      "source_findings": [
+        {
+          "pass_name": "security_p1",
+          "provider": "codex",
+          "persona": "security",
+          "file": "internal/auth/jwt.go",
+          "line": 3,
+          "severity": "bug",
+          "message": "ValidateToken now records request scope without validating expiry."
+        }
+      ],
+      "prefilter": {
+        "ready_for_verification": true,
+        "drop_reasons": []
+      },
+      "evidence_bundle": {
+        "diff_hunk": null,
+        "file_context": null,
+        "requirements_excerpt": null,
+        "static_analysis": []
+      }
+    },
+    {
+      "contract_version": "ccr.consolidated_candidate.v1",
+      "candidate_id": "F2",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/auth/jwt.go",
+      "line": 24,
+      "message": "ValidateToken still returns claims without checking expiry.",
+      "reviewers": ["security_p1"],
+      "supporting_personas": [],
+      "consensus": "1/3",
+      "support_count": 1,
+      "available_pass_count": 3,
+      "symbol": "ValidateToken",
+      "normalized_category": "token-validation",
+      "anchor_status": "unknown",
+      "evidence_sources": ["reviewer"],
+      "source_findings": [
+        {
+          "pass_name": "security_p1",
+          "provider": "codex",
+          "persona": "security",
+          "file": "internal/auth/jwt.go",
+          "line": 24,
+          "severity": "bug",
+          "message": "ValidateToken still returns claims without checking expiry."
+        }
+      ],
+      "prefilter": {
+        "ready_for_verification": true,
+        "drop_reasons": []
+      },
+      "evidence_bundle": {
+        "diff_hunk": null,
+        "file_context": null,
+        "requirements_excerpt": null,
+        "static_analysis": []
+      }
+    },
+    {
+      "contract_version": "ccr.consolidated_candidate.v1",
+      "candidate_id": "F3",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/missing/file.go",
+      "line": 10,
+      "message": "Missing file candidate should be dropped.",
+      "reviewers": ["security_p1"],
+      "supporting_personas": [],
+      "consensus": "1/3",
+      "support_count": 1,
+      "available_pass_count": 3,
+      "symbol": "ValidateToken",
+      "normalized_category": "token-validation",
+      "anchor_status": "unknown",
+      "evidence_sources": ["reviewer"],
+      "source_findings": [
+        {
+          "pass_name": "security_p1",
+          "provider": "codex",
+          "persona": "security",
+          "file": "internal/missing/file.go",
+          "line": 10,
+          "severity": "bug",
+          "message": "Missing file candidate should be dropped."
+        }
+      ],
+      "prefilter": {
+        "ready_for_verification": true,
+        "drop_reasons": []
+      },
+      "evidence_bundle": {
+        "diff_hunk": null,
+        "file_context": null,
+        "requirements_excerpt": null,
+        "static_analysis": []
+      }
+    }
+  ],
+  "summary": {
+    "candidate_count": 3,
+    "source_finding_count": 3
+  }
+}

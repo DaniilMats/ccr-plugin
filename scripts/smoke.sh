@@ -13,6 +13,7 @@ python3 -m py_compile \
   quality/scripts/ccr_run.py \
   quality/scripts/ccr_watch.py \
   quality/scripts/ccr_post_comments.py \
+  quality/scripts/ccr_eval.py \
   quality/scripts/ccr_consolidate.py \
   quality/scripts/ccr_verify_prepare.py \
   quality/scripts/repomap.py \
@@ -459,6 +460,19 @@ assert payload["posted_count"] == 1
 assert payload["summary"]["ready_resolution_rate"] == 1.0
 assert payload["summary"]["status_counts"]["posted"] == 1
 assert payload["summary"]["total_attempts"] == 1
+PY
+
+echo "[smoke] local eval runner"
+./scripts/evals.sh --suite routing --case small --output-dir "$TMP_DIR/evals" > "$TMP_DIR/evals.stdout.json"
+python3 - <<'PY' "$TMP_DIR/evals.stdout.json" "$TMP_DIR/evals/summary.json"
+import json, sys
+from pathlib import Path
+stdout_payload = json.loads(Path(sys.argv[1]).read_text())
+written_payload = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_payload["contract_version"] == "ccr.eval_summary.v1"
+assert stdout_payload["passed_count"] == 1
+assert stdout_payload["failed_count"] == 0
+assert stdout_payload == written_payload
 PY
 
 echo "[smoke] ok"

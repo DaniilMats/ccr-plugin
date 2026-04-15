@@ -1,0 +1,9 @@
+diff --git a/internal/auth/jwt.go b/internal/auth/jwt.go
+index 1111111..2222222 100644
+--- a/internal/auth/jwt.go
++++ b/internal/auth/jwt.go
+@@ -1,3 +1,4 @@
+ // Package auth validates JWTs for incoming requests.
+ package auth
++// ValidateToken now records request scope.
+

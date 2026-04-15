@@ -1,0 +1,8 @@
+{
+  "suite": "verification_prepare",
+  "candidates_file": "candidates.json",
+  "artifact_file": "artifact.txt",
+  "requirements_file": "requirements.txt",
+  "project_dir": "tests/fixtures/go_repo",
+  "expected_file": "expected.json"
+}

@@ -1,0 +1,175 @@
+{
+  "contract_version": "ccr.verification_prepare.v1",
+  "prepared_at": "<ts>",
+  "ready_candidates": [
+    {
+      "contract_version": "ccr.consolidated_candidate.v1",
+      "candidate_id": "F1",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/auth/jwt.go",
+      "line": 3,
+      "message": "ValidateToken now records request scope without validating expiry.",
+      "reviewers": [
+        "security_p1"
+      ],
+      "supporting_personas": [],
+      "consensus": "1/3",
+      "support_count": 1,
+      "available_pass_count": 3,
+      "symbol": "ValidateToken",
+      "normalized_category": "token-validation",
+      "anchor_status": "diff",
+      "evidence_sources": [
+        "reviewer",
+        "diff_hunk",
+        "file_context",
+        "requirements"
+      ],
+      "source_findings": [
+        {
+          "pass_name": "security_p1",
+          "provider": "codex",
+          "persona": "security",
+          "file": "internal/auth/jwt.go",
+          "line": 3,
+          "severity": "bug",
+          "message": "ValidateToken now records request scope without validating expiry."
+        }
+      ],
+      "prefilter": {
+        "ready_for_verification": true,
+        "drop_reasons": []
+      },
+      "evidence_bundle": {
+        "diff_hunk": "@@ -1,3 +1,4 @@\n // Package auth validates JWTs for incoming requests.\n package auth\n+// ValidateToken now records request scope.",
+        "file_context": "   1: // Package auth validates JWTs for incoming requests.\n   2: package auth\n   3: \n   4: import (\n   5: \t\"fmt\"\n   6: \t\"strings\"\n   7: \n   8: \t\"example.com/fixture/internal/config\"\n   9: )\n  10: \n  11: // TokenClaims holds normalized claims extracted from a token.\n  12: type TokenClaims struct {\n  13: \tSubject string\n  14: }\n  15: \n  16: var ErrInvalidToken = fmt.Errorf(\"invalid token\")\n  17: \n  18: const DefaultIssuer = \"fixture\"\n  19: \n  20: func ValidateToken(raw string) (*TokenClaims, error) {\n  21: \ttrimmed := strings.TrimSpace(raw)\n  22: \tif trimmed == \"\" {\n  23: \t\treturn nil, ErrInvalidToken",
+        "requirements_excerpt": "ValidateToken must reject expired tokens before returning claims.",
+        "static_analysis": []
+      },
+      "ready_for_verification": true,
+      "drop_reasons": []
+    },
+    {
+      "contract_version": "ccr.consolidated_candidate.v1",
+      "candidate_id": "F2",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/auth/jwt.go",
+      "line": 24,
+      "message": "ValidateToken still returns claims without checking expiry.",
+      "reviewers": [
+        "security_p1"
+      ],
+      "supporting_personas": [],
+      "consensus": "1/3",
+      "support_count": 1,
+      "available_pass_count": 3,
+      "symbol": "ValidateToken",
+      "normalized_category": "token-validation",
+      "anchor_status": "file_context",
+      "evidence_sources": [
+        "reviewer",
+        "file_context",
+        "requirements"
+      ],
+      "source_findings": [
+        {
+          "pass_name": "security_p1",
+          "provider": "codex",
+          "persona": "security",
+          "file": "internal/auth/jwt.go",
+          "line": 24,
+          "severity": "bug",
+          "message": "ValidateToken still returns claims without checking expiry."
+        }
+      ],
+      "prefilter": {
+        "ready_for_verification": true,
+        "drop_reasons": []
+      },
+      "evidence_bundle": {
+        "diff_hunk": null,
+        "file_context": "   4: import (\n   5: \t\"fmt\"\n   6: \t\"strings\"\n   7: \n   8: \t\"example.com/fixture/internal/config\"\n   9: )\n  10: \n  11: // TokenClaims holds normalized claims extracted from a token.\n  12: type TokenClaims struct {\n  13: \tSubject string\n  14: }\n  15: \n  16: var ErrInvalidToken = fmt.Errorf(\"invalid token\")\n  17: \n  18: const DefaultIssuer = \"fixture\"\n  19: \n  20: func ValidateToken(raw string) (*TokenClaims, error) {\n  21: \ttrimmed := strings.TrimSpace(raw)\n  22: \tif trimmed == \"\" {\n  23: \t\treturn nil, ErrInvalidToken\n  24: \t}\n  25: \tif config.DefaultAudience == \"\" {\n  26: \t\treturn nil, fmt.Errorf(\"missing audience\")\n  27: \t}\n  28: \treturn &TokenClaims{Subject: trimmed}, nil\n  29: }\n  30: \n  31: func ParseClaims(raw string) (*TokenClaims, error) {\n  32: \treturn ValidateToken(raw)\n  33: }\n  34: \n  35: func localHelper(raw string) string {\n  36: \treturn strings.TrimSpace(raw)\n  37: }",
+        "requirements_excerpt": "ValidateToken must reject expired tokens before returning claims.",
+        "static_analysis": []
+      },
+      "ready_for_verification": true,
+      "drop_reasons": []
+    }
+  ],
+  "dropped_candidates": [
+    {
+      "contract_version": "ccr.consolidated_candidate.v1",
+      "candidate_id": "F3",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/missing/file.go",
+      "line": 10,
+      "message": "Missing file candidate should be dropped.",
+      "reviewers": [
+        "security_p1"
+      ],
+      "supporting_personas": [],
+      "consensus": "1/3",
+      "support_count": 1,
+      "available_pass_count": 3,
+      "symbol": "ValidateToken",
+      "normalized_category": "token-validation",
+      "anchor_status": "missing",
+      "evidence_sources": [
+        "reviewer",
+        "requirements"
+      ],
+      "source_findings": [
+        {
+          "pass_name": "security_p1",
+          "provider": "codex",
+          "persona": "security",
+          "file": "internal/missing/file.go",
+          "line": 10,
+          "severity": "bug",
+          "message": "Missing file candidate should be dropped."
+        }
+      ],
+      "prefilter": {
+        "ready_for_verification": false,
+        "drop_reasons": [
+          "missing_file",
+          "missing_anchor",
+          "missing_evidence"
+        ]
+      },
+      "evidence_bundle": {
+        "diff_hunk": null,
+        "file_context": null,
+        "requirements_excerpt": "ValidateToken must reject expired tokens before returning claims.",
+        "static_analysis": []
+      },
+      "ready_for_verification": false,
+      "drop_reasons": [
+        "missing_file",
+        "missing_anchor",
+        "missing_evidence"
+      ]
+    }
+  ],
+  "batches": [
+    {
+      "batch_id": "B1",
+      "batch_file": "verify_batch_001.json",
+      "file": "internal/auth/jwt.go",
+      "candidate_ids": [
+        "F1",
+        "F2"
+      ],
+      "candidate_count": 2
+    }
+  ],
+  "summary": {
+    "candidate_count": 3,
+    "ready_count": 2,
+    "dropped_count": 1,
+    "batch_count": 1
+  }
+}

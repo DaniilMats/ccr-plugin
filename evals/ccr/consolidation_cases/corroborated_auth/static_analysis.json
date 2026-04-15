@@ -1,0 +1,13 @@
+{
+  "go_vet": [],
+  "staticcheck": [],
+  "gosec": [
+    {
+      "tool": "gosec",
+      "file": "internal/auth/jwt.go",
+      "line": 12,
+      "message": "Token validation path does not enforce expiry checks.",
+      "code": "G999"
+    }
+  ]
+}

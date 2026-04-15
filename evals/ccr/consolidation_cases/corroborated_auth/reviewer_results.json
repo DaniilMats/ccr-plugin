@@ -1,0 +1,36 @@
+[
+  {
+    "pass_name": "security_p1",
+    "persona": "security",
+    "provider": "codex",
+    "result": {
+      "contract_version": "ccr.reviewer_result.v1",
+      "findings": [
+        {
+          "severity": "bug",
+          "file": "internal/auth/jwt.go",
+          "line": 12,
+          "message": "`ValidateToken` skips JWT token expiry validation."
+        }
+      ],
+      "summary": "security summary"
+    }
+  },
+  {
+    "pass_name": "logic_p1",
+    "persona": "logic",
+    "provider": "gemini",
+    "result": {
+      "contract_version": "ccr.reviewer_result.v1",
+      "findings": [
+        {
+          "severity": "warning",
+          "file": "internal/auth/jwt.go",
+          "line": 13,
+          "message": "JWT token expiry validation is missing in ValidateToken."
+        }
+      ],
+      "summary": "logic summary"
+    }
+  }
+]

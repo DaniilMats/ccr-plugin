@@ -1,0 +1,7 @@
+{
+  "suite": "consolidation",
+  "reviewer_results_file": "reviewer_results.json",
+  "route_plan_file": "route_plan.json",
+  "static_analysis_file": "static_analysis.json",
+  "expected_file": "expected.json"
+}

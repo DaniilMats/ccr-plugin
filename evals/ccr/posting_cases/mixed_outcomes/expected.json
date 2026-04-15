@@ -1,0 +1,152 @@
+{
+  "contract_version": "ccr.posting_result.v1",
+  "run_id": "eval-mixed_outcomes",
+  "project": "group/project",
+  "mr_iid": 200,
+  "approved_all": false,
+  "approved_finding_numbers": [
+    1,
+    2,
+    3
+  ],
+  "invalid_finding_numbers": [
+    3
+  ],
+  "started_at": "<ts>",
+  "finished_at": "<ts>",
+  "duration_ms": "<ms>",
+  "posted_count": 1,
+  "already_posted_count": 0,
+  "skipped_count": 2,
+  "failed_count": 0,
+  "summary": {
+    "approved_all": false,
+    "approved_count": 2,
+    "ready_count": 1,
+    "missing_anchor_count": 1,
+    "invalid_count": 1,
+    "ready_resolved_count": 1,
+    "ready_resolution_rate": 1.0,
+    "posted_count": 1,
+    "already_posted_count": 0,
+    "skipped_count": 2,
+    "failed_count": 0,
+    "total_attempts": 1,
+    "status_counts": {
+      "posted": 1,
+      "already_posted": 0,
+      "skipped_missing_anchor": 1,
+      "skipped_invalid_selection": 1,
+      "failed": 0,
+      "invalid_response": 0
+    },
+    "persona_breakdown": {
+      "performance": {
+        "approved_count": 1,
+        "ready_count": 0,
+        "missing_anchor_count": 1,
+        "posted_count": 0,
+        "already_posted_count": 0,
+        "skipped_count": 1,
+        "skipped_missing_anchor_count": 1,
+        "skipped_invalid_selection_count": 0,
+        "failed_count": 0,
+        "invalid_response_count": 0
+      },
+      "security": {
+        "approved_count": 1,
+        "ready_count": 1,
+        "missing_anchor_count": 0,
+        "posted_count": 1,
+        "already_posted_count": 0,
+        "skipped_count": 0,
+        "skipped_missing_anchor_count": 0,
+        "skipped_invalid_selection_count": 0,
+        "failed_count": 0,
+        "invalid_response_count": 0
+      }
+    },
+    "severity_breakdown": {
+      "bug": {
+        "approved_count": 1,
+        "ready_count": 1,
+        "missing_anchor_count": 0,
+        "posted_count": 1,
+        "already_posted_count": 0,
+        "skipped_count": 0,
+        "skipped_missing_anchor_count": 0,
+        "skipped_invalid_selection_count": 0,
+        "failed_count": 0,
+        "invalid_response_count": 0
+      },
+      "warning": {
+        "approved_count": 1,
+        "ready_count": 0,
+        "missing_anchor_count": 1,
+        "posted_count": 0,
+        "already_posted_count": 0,
+        "skipped_count": 1,
+        "skipped_missing_anchor_count": 1,
+        "skipped_invalid_selection_count": 0,
+        "failed_count": 0,
+        "invalid_response_count": 0
+      }
+    }
+  },
+  "results": [
+    {
+      "finding_number": 1,
+      "candidate_id": "F1",
+      "persona": "security",
+      "severity": "bug",
+      "file": "internal/auth/jwt.go",
+      "line": 2,
+      "message": "Validate the token before returning.",
+      "prepared_status": "ready",
+      "fingerprint": "2387b70edcca78d8",
+      "payload_file": "001-F1.request.json",
+      "status": "posted",
+      "response_file": "001-F1.response.json",
+      "discussion_id": "discussion-4",
+      "note_id": 100,
+      "error": null,
+      "attempts": 1
+    },
+    {
+      "finding_number": 2,
+      "candidate_id": "F2",
+      "persona": "performance",
+      "severity": "warning",
+      "file": "internal/auth/jwt.go",
+      "line": 99,
+      "message": "This line is not in the diff.",
+      "prepared_status": "missing_anchor",
+      "fingerprint": "ad5ad48c916762c9",
+      "payload_file": null,
+      "status": "skipped_missing_anchor",
+      "response_file": null,
+      "discussion_id": null,
+      "note_id": null,
+      "error": "finding did not map to a diff position",
+      "attempts": 0
+    },
+    {
+      "finding_number": 3,
+      "candidate_id": null,
+      "persona": null,
+      "severity": null,
+      "file": null,
+      "line": null,
+      "message": null,
+      "prepared_status": null,
+      "fingerprint": null,
+      "payload_file": null,
+      "status": "skipped_invalid_selection",
+      "response_file": null,
+      "discussion_id": null,
+      "note_id": null,
+      "error": "finding number was not present in verified_findings.json",
+      "attempts": 0
+    }
+  ]
+}

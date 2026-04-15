@@ -1,0 +1,14 @@
+{
+  "suite": "posting",
+  "mode": "apply",
+  "target": "https://gitlab.com/group/project/-/merge_requests/200",
+  "project": "group/project",
+  "mr_iid": 200,
+  "approved_finding_numbers": [1, 2, 3],
+  "approved_all": false,
+  "verified_findings_file": "verified_findings.json",
+  "diff_file": "diff.txt",
+  "glab_get_payload_file": "glab_get.json",
+  "glab_post_payload_file": "glab_post.json",
+  "expected_file": "expected.json"
+}

@@ -1,0 +1,1 @@
+ValidateToken must reject expired tokens before returning claims.

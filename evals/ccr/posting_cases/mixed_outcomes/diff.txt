@@ -1,0 +1,7 @@
+diff --git a/internal/auth/jwt.go b/internal/auth/jwt.go
+index 1111111..2222222 100644
+--- a/internal/auth/jwt.go
++++ b/internal/auth/jwt.go
+@@ -1,1 +1,2 @@
+ package auth
++func Validate() {}
