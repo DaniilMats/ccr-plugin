@@ -12,6 +12,7 @@ python3 -m py_compile \
   quality/scripts/ccr_run_init.py \
   quality/scripts/ccr_run.py \
   quality/scripts/ccr_watch.py \
+  quality/scripts/ccr_post_comments.py \
   quality/scripts/repomap.py \
   quality/scripts/ccr_routing.py \
   quality/scripts/llm-proxy/code_review.py \
@@ -113,6 +114,71 @@ summary = json.loads(Path(launch["summary_file"]).read_text())
 status = json.loads(Path(launch["status_file"]).read_text())
 assert summary["contract_version"] == "ccr.run_summary.v1"
 assert status["contract_version"] == "ccr.run_status.v1"
+PY
+
+echo "[smoke] posting helper prepare-only"
+python3 quality/scripts/ccr_run_init.py --base-dir "$TMP_DIR/phase2" > "$TMP_DIR/phase2_manifest.json"
+python3 - <<'PY' "$TMP_DIR/phase2_manifest.json"
+import json, sys
+from pathlib import Path
+manifest = json.loads(Path(sys.argv[1]).read_text())
+Path(manifest["diff_file"]).write_text("""diff --git a/internal/auth/jwt.go b/internal/auth/jwt.go
+index 1111111..2222222 100644
+--- a/internal/auth/jwt.go
++++ b/internal/auth/jwt.go
+@@ -1,1 +1,2 @@
+ package auth
++func Validate() {}
+""", encoding="utf-8")
+Path(manifest["summary_file"]).write_text(json.dumps({
+    "contract_version": "ccr.run_summary.v1",
+    "run_id": manifest["run_id"],
+    "mode": "mr",
+    "target": "https://gitlab.com/group/project/-/merge_requests/200",
+}) + "\n", encoding="utf-8")
+Path(manifest["mr_metadata_file"]).write_text(json.dumps({
+    "iid": 200,
+    "diff_refs": {
+        "base_sha": "base-sha",
+        "start_sha": "start-sha",
+        "head_sha": "head-sha",
+    },
+}) + "\n", encoding="utf-8")
+Path(manifest["verified_findings_file"]).write_text(json.dumps({
+    "contract_version": "ccr.verified_findings.v1",
+    "verified_findings": [
+        {
+            "finding_number": 1,
+            "candidate_id": "F1",
+            "file": "internal/auth/jwt.go",
+            "line": 2,
+            "message": "Validate the token before returning.",
+        }
+    ],
+    "summary": {"verified_count": 1},
+}) + "\n", encoding="utf-8")
+Path(manifest["posting_approval_file"]).write_text(json.dumps({
+    "contract_version": "ccr.posting_approval.v1",
+    "run_id": manifest["run_id"],
+    "project": "group/project",
+    "mr_iid": 200,
+    "approved_finding_numbers": [1],
+    "approved_all": False,
+    "approved_at": "2026-04-15T00:00:00Z",
+    "source": "smoke",
+}) + "\n", encoding="utf-8")
+PY
+python3 quality/scripts/ccr_post_comments.py \
+  --manifest-file "$TMP_DIR/phase2_manifest.json" \
+  --prepare-only > "$TMP_DIR/posting_prepare.json"
+python3 - <<'PY' "$TMP_DIR/posting_prepare.json" "$TMP_DIR/phase2_manifest.json"
+import json, sys
+from pathlib import Path
+prepared = json.loads(Path(sys.argv[1]).read_text())
+manifest = json.loads(Path(sys.argv[2]).read_text())
+assert prepared["contract_version"] == "ccr.posting_manifest.v1"
+assert prepared["summary"]["ready_count"] == 1
+assert Path(manifest["posting_manifest_file"]).is_file()
 PY
 
 echo "[smoke] ok"

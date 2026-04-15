@@ -42,10 +42,16 @@ class TestCCRRunInit(unittest.TestCase):
             self.assertTrue(str(manifest["watch_cursor_file"]).endswith("watch_cursor.json"))
             self.assertTrue(str(manifest["harness_stdout_file"]).endswith("harness.stdout.txt"))
             self.assertTrue(str(manifest["harness_stderr_file"]).endswith("harness.stderr.txt"))
+            self.assertTrue(str(manifest["posting_approval_file"]).endswith("posting_approval.json"))
+            self.assertTrue(str(manifest["posting_manifest_file"]).endswith("posting_manifest.json"))
+            self.assertTrue(str(manifest["posting_results_file"]).endswith("posting_results.json"))
             self.assertEqual(manifest["contract_versions"]["run_status"], "ccr.run_status.v1")
             self.assertEqual(manifest["contract_versions"]["run_summary"], "ccr.run_summary.v1")
             self.assertEqual(manifest["contract_versions"]["run_launch"], "ccr.run_launch.v1")
             self.assertEqual(manifest["contract_versions"]["watch_result"], "ccr.watch_result.v1")
+            self.assertEqual(manifest["contract_versions"]["posting_approval"], "ccr.posting_approval.v1")
+            self.assertEqual(manifest["contract_versions"]["posting_manifest"], "ccr.posting_manifest.v1")
+            self.assertEqual(manifest["contract_versions"]["posting_result"], "ccr.posting_result.v1")
 
             is_valid, violations = self.validator.validate_response(
                 json.dumps(manifest), str(self.schema)

@@ -3,23 +3,88 @@
   "title": "CCRPostingManifestV1",
   "type": "object",
   "additionalProperties": true,
-  "required": ["contract_version", "project", "mr_iid", "approved_findings"],
+  "required": [
+    "contract_version",
+    "run_id",
+    "project",
+    "mr_iid",
+    "approved_all",
+    "approved_finding_numbers",
+    "invalid_finding_numbers",
+    "diff_refs",
+    "approved_findings",
+    "summary"
+  ],
   "properties": {
     "contract_version": { "const": "ccr.posting_manifest.v1" },
-    "project": { "type": "string" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "project": { "type": "string", "minLength": 1 },
     "mr_iid": { "type": ["string", "integer"] },
+    "prepared_at": { "type": "string", "minLength": 1 },
+    "approved_all": { "type": "boolean" },
+    "approved_finding_numbers": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "uniqueItems": true
+    },
+    "invalid_finding_numbers": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "uniqueItems": true
+    },
+    "diff_refs": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["base_sha", "start_sha", "head_sha"],
+      "properties": {
+        "base_sha": { "type": "string", "minLength": 1 },
+        "start_sha": { "type": "string", "minLength": 1 },
+        "head_sha": { "type": "string", "minLength": 1 }
+      }
+    },
     "approved_findings": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["finding_number", "file", "line", "message"],
+        "additionalProperties": true,
+        "required": ["finding_number", "file", "line", "message", "fingerprint", "status"],
         "properties": {
           "finding_number": { "type": "integer", "minimum": 1 },
-          "file": { "type": "string" },
+          "candidate_id": { "type": "string", "minLength": 1 },
+          "file": { "type": "string", "minLength": 1 },
           "line": { "type": "integer", "minimum": 1 },
-          "message": { "type": "string" },
-          "fingerprint": { "type": "string" }
+          "message": { "type": "string", "minLength": 1 },
+          "fingerprint": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["ready", "missing_anchor", "already_posted"] },
+          "payload_file": { "type": "string", "minLength": 1 },
+          "anchor": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["position_type", "base_sha", "start_sha", "head_sha", "old_path", "new_path"],
+            "properties": {
+              "position_type": { "const": "text" },
+              "base_sha": { "type": "string", "minLength": 1 },
+              "start_sha": { "type": "string", "minLength": 1 },
+              "head_sha": { "type": "string", "minLength": 1 },
+              "old_path": { "type": "string", "minLength": 1 },
+              "new_path": { "type": "string", "minLength": 1 },
+              "old_line": { "type": ["integer", "null"], "minimum": 1 },
+              "new_line": { "type": ["integer", "null"], "minimum": 1 },
+              "line_kind": { "enum": ["old", "new", "context"] }
+            }
+          }
         }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["approved_count", "ready_count", "missing_anchor_count", "invalid_count"],
+      "properties": {
+        "approved_count": { "type": "integer", "minimum": 0 },
+        "ready_count": { "type": "integer", "minimum": 0 },
+        "missing_anchor_count": { "type": "integer", "minimum": 0 },
+        "invalid_count": { "type": "integer", "minimum": 0 }
       }
     }
   }

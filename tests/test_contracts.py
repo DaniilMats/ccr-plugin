@@ -36,7 +36,9 @@ class TestContracts(unittest.TestCase):
             "consolidated_candidate.schema.json",
             "verification_batch.schema.json",
             "verification_result.schema.json",
+            "posting_approval.schema.json",
             "posting_manifest.schema.json",
+            "posting_result.schema.json",
         }
         existing = {path.name for path in self.schemas_dir.glob("*.json")}
         self.assertTrue(expected.issubset(existing))
@@ -140,6 +142,9 @@ class TestContracts(unittest.TestCase):
             "reviewers_file": "/tmp/ccr/run/reviewers.json",
             "candidates_file": "/tmp/ccr/run/candidates.json",
             "verified_findings_file": "/tmp/ccr/run/verified_findings.json",
+            "posting_approval_file": "/tmp/ccr/run/posting_approval.json",
+            "posting_manifest_file": "/tmp/ccr/run/posting_manifest.json",
+            "posting_results_file": "/tmp/ccr/run/posting_results.json",
             "review_plan_summary": "Review plan: medium-risk MR → Logic x3, Security x2",
             "reviewer_worker_count": 5,
             "verifier_worker_count": 1,
@@ -169,6 +174,9 @@ class TestContracts(unittest.TestCase):
             "reviewers_file": "/tmp/ccr/run/reviewers.json",
             "candidates_file": "/tmp/ccr/run/candidates.json",
             "verified_findings_file": "/tmp/ccr/run/verified_findings.json",
+            "posting_approval_file": "/tmp/ccr/run/posting_approval.json",
+            "posting_manifest_file": "/tmp/ccr/run/posting_manifest.json",
+            "posting_results_file": "/tmp/ccr/run/posting_results.json",
             "harness_stdout_file": "/tmp/ccr/run/logs/harness.stdout.txt",
             "harness_stderr_file": "/tmp/ccr/run/logs/harness.stderr.txt",
             "state": "launched",
@@ -287,22 +295,93 @@ class TestContracts(unittest.TestCase):
         }
         self._assert_valid(payload, "verification_result.schema.json")
 
+    def test_posting_approval_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.posting_approval.v1",
+            "run_id": "20260414T220000Z-1234-abcd1234",
+            "project": "group/project",
+            "mr_iid": 123,
+            "approved_finding_numbers": [1, 2],
+            "approved_all": False,
+            "approved_at": "2026-04-14T22:00:00Z",
+            "source": "user_selection",
+        }
+        self._assert_valid(payload, "posting_approval.schema.json")
+
     def test_posting_manifest_contract(self) -> None:
         payload = {
             "contract_version": "ccr.posting_manifest.v1",
+            "run_id": "20260414T220000Z-1234-abcd1234",
             "project": "group/project",
             "mr_iid": 123,
+            "prepared_at": "2026-04-14T22:01:00Z",
+            "approved_all": False,
+            "approved_finding_numbers": [1],
+            "invalid_finding_numbers": [],
+            "diff_refs": {
+                "base_sha": "aaa",
+                "start_sha": "bbb",
+                "head_sha": "ccc"
+            },
             "approved_findings": [
                 {
                     "finding_number": 1,
+                    "candidate_id": "F1",
                     "file": "internal/auth/jwt.go",
                     "line": 12,
                     "message": "Comment body.",
                     "fingerprint": "abc123",
+                    "status": "ready",
+                    "payload_file": "/tmp/ccr/run/comment_payloads/001-F1.request.json",
+                    "anchor": {
+                        "position_type": "text",
+                        "base_sha": "aaa",
+                        "start_sha": "bbb",
+                        "head_sha": "ccc",
+                        "old_path": "internal/auth/jwt.go",
+                        "new_path": "internal/auth/jwt.go",
+                        "new_line": 12,
+                        "line_kind": "new"
+                    }
                 }
             ],
+            "summary": {
+                "approved_count": 1,
+                "ready_count": 1,
+                "missing_anchor_count": 0,
+                "invalid_count": 0
+            }
         }
         self._assert_valid(payload, "posting_manifest.schema.json")
+
+    def test_posting_result_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.posting_result.v1",
+            "run_id": "20260414T220000Z-1234-abcd1234",
+            "project": "group/project",
+            "mr_iid": 123,
+            "started_at": "2026-04-14T22:01:00Z",
+            "finished_at": "2026-04-14T22:01:03Z",
+            "posted_count": 1,
+            "already_posted_count": 0,
+            "skipped_count": 0,
+            "failed_count": 0,
+            "results": [
+                {
+                    "finding_number": 1,
+                    "candidate_id": "F1",
+                    "fingerprint": "abc123",
+                    "status": "posted",
+                    "payload_file": "/tmp/ccr/run/comment_payloads/001-F1.request.json",
+                    "response_file": "/tmp/ccr/run/comment_payloads/001-F1.response.json",
+                    "discussion_id": "discussion-1",
+                    "note_id": 42,
+                    "error": None,
+                    "attempts": 1
+                }
+            ]
+        }
+        self._assert_valid(payload, "posting_result.schema.json")
 
 
 if __name__ == "__main__":

@@ -204,6 +204,9 @@ Pass these only when justified by the user's request/context:
 - `reviewers_file`
 - `candidates_file`
 - `verified_findings_file`
+- `posting_approval_file`
+- `posting_manifest_file`
+- `posting_results_file`
 
 ### 3.5 Watch progress via `ccr_watch.py`
 
@@ -292,27 +295,27 @@ Parse:
 
 **Never post without explicit approval.**
 
-Phase 2 will move posting into a dedicated helper. Until then, posting remains prompt-controlled but must still be deterministic.
+Phase 2 posting is now deterministic and helper-driven.
 
 Use these inputs:
-- `mr_metadata_file` for project/MR metadata and `diff_refs`
-- `verified_findings_file` for approved findings
-- `comments_dir` from the run manifest for generated JSON payloads
+- `manifest_file`
+- `posting_approval_file`
+- `posting_manifest_file`
+- `posting_results_file`
 
 Posting rules:
-1. Post only approved findings
-2. Clean old payloads first: `rm -f <comments_dir>/*.json`
-3. Build JSON payloads with Python `json.dump()` — never hand-roll JSON in shell
-4. Post one at a time:
+1. Materialize the user's approval into `posting_approval_file` with Python `json.dump()` using contract version `ccr.posting_approval.v1`
+2. In MR mode, call:
    ```bash
-   glab api projects/<PROJECT>/merge_requests/<IID>/discussions \
-     -X POST \
-     -H 'Content-Type: application/json' \
-     --input "$payload"
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ccr_post_comments.py \
+     --manifest-file <manifest_file> \
+     --approval-file <posting_approval_file> \
+     --apply
    ```
-5. Treat HTTP 2xx as posted — do **not** retry that payload
-6. If the response is not a `DiffNote`, warn and stop retrying that payload
-7. Local modes never reach this step
+3. Do **NOT** manually construct `glab api ... discussions` requests in the prompt
+4. After the helper exits, read `posting_results_file` and summarize posted / already-posted / skipped / failed counts
+5. If any posting result failed, show the failures clearly and stop; do not claim the publish step fully succeeded
+6. Local modes never reach this step
 
 ## Verified Finding Shape
 
@@ -320,6 +323,7 @@ Read verified findings from `verified_findings_file`. Each finding includes at l
 
 ```json
 {
+  "finding_number": 3,
   "candidate_id": "F3",
   "persona": "security",
   "severity": "bug",
@@ -348,10 +352,11 @@ Use the verifier-adjusted file/line/message when posting or summarizing.
 3. Never respond to monitor updates with generic filler; always use the concrete watcher delta or stay silent until the next meaningful update
 4. If you must fall back to foreground mode, never use a short/default Bash timeout — use at least 2700000ms
 5. Never post comments without explicit user approval in MR mode
-6. Always show only **verified** findings as final findings
-7. Local diff / file / package modes are **report-only**
-8. AskUserQuestion is mandatory in MR mode before any posting fallback text prompt
-9. Requirements review now runs through the same deterministic wrapper path as other personas — do not revive the old prompt-only requirements path
+6. Never bypass `ccr_post_comments.py` for MR posting once approval has been collected
+7. Always show only **verified** findings as final findings
+8. Local diff / file / package modes are **report-only**
+9. AskUserQuestion is mandatory in MR mode before any posting fallback text prompt
+10. Requirements review now runs through the same deterministic wrapper path as other personas — do not revive the old prompt-only requirements path
 
 ## Comment Format
 

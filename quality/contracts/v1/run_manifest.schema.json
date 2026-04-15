@@ -34,6 +34,9 @@
     "reviewers_file",
     "candidates_file",
     "verified_findings_file",
+    "posting_approval_file",
+    "posting_manifest_file",
+    "posting_results_file",
     "comments_dir",
     "report_file",
     "contract_versions"
@@ -69,6 +72,9 @@
     "reviewers_file": { "type": "string", "minLength": 1 },
     "candidates_file": { "type": "string", "minLength": 1 },
     "verified_findings_file": { "type": "string", "minLength": 1 },
+    "posting_approval_file": { "type": "string", "minLength": 1 },
+    "posting_manifest_file": { "type": "string", "minLength": 1 },
+    "posting_results_file": { "type": "string", "minLength": 1 },
     "comments_dir": { "type": "string", "minLength": 1 },
     "report_file": { "type": "string", "minLength": 1 },
     "contract_versions": {

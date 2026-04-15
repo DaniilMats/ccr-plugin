@@ -304,6 +304,9 @@ class RunObserver:
                 "reviewers_file": manifest["reviewers_file"],
                 "candidates_file": manifest["candidates_file"],
                 "verified_findings_file": manifest["verified_findings_file"],
+                "posting_approval_file": manifest["posting_approval_file"],
+                "posting_manifest_file": manifest["posting_manifest_file"],
+                "posting_results_file": manifest["posting_results_file"],
                 "harness_stdout_file": manifest["harness_stdout_file"],
                 "harness_stderr_file": manifest["harness_stderr_file"],
             },
@@ -1978,6 +1981,8 @@ def _merge_verified_findings(
             )
 
     merged.sort(key=lambda item: (_REPORT_PERSONA_ORDER.index(item["persona"]), _severity_rank(item["severity"]), item["file"], item["line"], item["candidate_id"]))
+    for finding_number, item in enumerate(merged, start=1):
+        item["finding_number"] = finding_number
     payload = {
         "contract_version": "ccr.verified_findings.v1",
         "verified_findings": merged,
@@ -2089,7 +2094,7 @@ def _format_report(verified_findings: list[dict[str, Any]]) -> str:
         return "Проверенных замечаний не найдено.\n"
 
     lines: list[str] = []
-    finding_number = 1
+    fallback_finding_number = 1
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for finding in verified_findings:
         grouped[finding["persona"]].append(finding)
@@ -2103,12 +2108,15 @@ def _format_report(verified_findings: list[dict[str, Any]]) -> str:
             confidence = item["consensus"]
             if item.get("tentative"):
                 confidence = f"{confidence} — tentative"
+            finding_number = int(item.get("finding_number") or 0)
+            if finding_number <= 0:
+                finding_number = fallback_finding_number
             lines.append(
                 f"{finding_number}. [{item['severity'].upper()}] {item['file']}:{item['line']} — {confidence} — {item['message']}"
             )
             if item.get("evidence"):
                 lines.append(f"   Evidence: {item['evidence']}")
-            finding_number += 1
+            fallback_finding_number = max(fallback_finding_number, finding_number + 1)
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
@@ -2320,6 +2328,9 @@ def launch_ccr_detached(args: argparse.Namespace, raw_args: list[str]) -> dict[s
         "reviewers_file": manifest["reviewers_file"],
         "candidates_file": manifest["candidates_file"],
         "verified_findings_file": manifest["verified_findings_file"],
+        "posting_approval_file": manifest["posting_approval_file"],
+        "posting_manifest_file": manifest["posting_manifest_file"],
+        "posting_results_file": manifest["posting_results_file"],
         "harness_stdout_file": manifest["harness_stdout_file"],
         "harness_stderr_file": manifest["harness_stderr_file"],
         "state": "launched",
@@ -2599,6 +2610,9 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             "reviewers_file": manifest["reviewers_file"],
             "candidates_file": manifest["candidates_file"],
             "verified_findings_file": manifest["verified_findings_file"],
+            "posting_approval_file": manifest["posting_approval_file"],
+            "posting_manifest_file": manifest["posting_manifest_file"],
+            "posting_results_file": manifest["posting_results_file"],
             "reviewer_worker_count": reviewers_summary["worker_count"],
             "verifier_worker_count": verification_summary["worker_count"],
             "reviewer_timeout_sec": args.reviewer_timeout,

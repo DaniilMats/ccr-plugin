@@ -75,6 +75,9 @@ class TestCCRRun(unittest.TestCase):
             self.assertTrue(str(manifest["watch_cursor_file"]).endswith("watch_cursor.json"))
             self.assertTrue(str(manifest["harness_stdout_file"]).endswith("harness.stdout.txt"))
             self.assertTrue(str(manifest["harness_stderr_file"]).endswith("harness.stderr.txt"))
+            self.assertTrue(str(manifest["posting_approval_file"]).endswith("posting_approval.json"))
+            self.assertTrue(str(manifest["posting_manifest_file"]).endswith("posting_manifest.json"))
+            self.assertTrue(str(manifest["posting_results_file"]).endswith("posting_results.json"))
             self.assertEqual(
                 Path(manifest["report_file"]).read_text(encoding="utf-8").strip(),
                 "Проверенных замечаний не найдено.",
@@ -107,6 +110,77 @@ class TestCCRRun(unittest.TestCase):
             self.assertEqual(written_summary["run_id"], summary["run_id"])
             self.assertEqual(written_summary["duration_ms"], summary["duration_ms"])
             self.assertTrue({"run_initialized", "route_plan_ready", "reviewers_started", "run_completed"}.issubset(trace_events))
+            self.assertEqual(summary["posting_approval_file"], manifest["posting_approval_file"])
+            self.assertEqual(summary["posting_manifest_file"], manifest["posting_manifest_file"])
+            self.assertEqual(summary["posting_results_file"], manifest["posting_results_file"])
+
+    def test_merge_verified_findings_assigns_finding_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = self.module._build_manifest(Path(tmp), "test-run")
+            candidates = [
+                self.module.CandidateRecord(
+                    candidate_id="F2",
+                    persona="logic",
+                    severity="warning",
+                    file="internal/auth/jwt.go",
+                    line=22,
+                    message="Second finding.",
+                    reviewers=["logic_p1", "logic_p2"],
+                    consensus="2/2",
+                    evidence_sources=["diff_hunk"],
+                ),
+                self.module.CandidateRecord(
+                    candidate_id="F1",
+                    persona="security",
+                    severity="bug",
+                    file="internal/auth/jwt.go",
+                    line=12,
+                    message="First finding.",
+                    reviewers=["security_p1", "security_p2"],
+                    consensus="2/2",
+                    evidence_sources=["diff_hunk"],
+                ),
+            ]
+            verification_results = [
+                {
+                    "batch_id": "batch-1",
+                    "status": "succeeded",
+                    "result": {
+                        "verified_findings": [
+                            {
+                                "candidate_id": "F2",
+                                "verdict": "confirmed",
+                                "file": "internal/auth/jwt.go",
+                                "line": 22,
+                                "revised_message": "Second finding.",
+                                "evidence": "Supported.",
+                            },
+                            {
+                                "candidate_id": "F1",
+                                "verdict": "confirmed",
+                                "file": "internal/auth/jwt.go",
+                                "line": 12,
+                                "revised_message": "First finding.",
+                                "evidence": "Supported.",
+                            },
+                        ]
+                    },
+                }
+            ]
+
+            merged = self.module._merge_verified_findings(
+                manifest,
+                candidates=candidates,
+                verification_results=verification_results,
+            )
+            self.assertEqual([item["finding_number"] for item in merged], [1, 2])
+            self.assertEqual([item["candidate_id"] for item in merged], ["F2", "F1"])
+            written = json.loads(Path(manifest["verified_findings_file"]).read_text(encoding="utf-8"))
+            self.assertEqual(written["verified_findings"][0]["finding_number"], 1)
+            self.assertEqual(written["verified_findings"][1]["finding_number"], 2)
+            report = self.module._format_report(merged)
+            self.assertIn("1. [WARNING] internal/auth/jwt.go:22", report)
+            self.assertIn("2. [BUG] internal/auth/jwt.go:12", report)
 
     def test_detach_launch_and_watch_flow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

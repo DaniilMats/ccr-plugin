@@ -74,6 +74,9 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
         "reviewers_file": str(run_dir / "reviewers.json"),
         "candidates_file": str(run_dir / "candidates.json"),
         "verified_findings_file": str(run_dir / "verified_findings.json"),
+        "posting_approval_file": str(run_dir / "posting_approval.json"),
+        "posting_manifest_file": str(run_dir / "posting_manifest.json"),
+        "posting_results_file": str(run_dir / "posting_results.json"),
         "comments_dir": str(comments_dir),
         "report_file": str(run_dir / "report.md"),
         "contract_versions": {
@@ -88,7 +91,9 @@ def _build_manifest(base_dir: Path, run_id: str) -> dict:
             "consolidated_candidate": "ccr.consolidated_candidate.v1",
             "verification_batch": "ccr.verification_batch.v1",
             "verification_result": "ccr.verification_result.v1",
+            "posting_approval": "ccr.posting_approval.v1",
             "posting_manifest": "ccr.posting_manifest.v1",
+            "posting_result": "ccr.posting_result.v1",
         },
     }
     return manifest

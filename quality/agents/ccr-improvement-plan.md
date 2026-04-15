@@ -23,6 +23,8 @@ As of 2026-04-14:
 - Phase 1.2 is complete: detached/background harness launch plus polling via `quality/scripts/ccr_watch.py`
 - Phase 1.3 is complete: compact/quiet watcher output, cursor-managed progress polling, `/loop`/scheduled-task limits documented, and Monitor-first live UX
 - Phase 1.3.1 is complete: clearer icon-prefixed watcher lines and stricter no-filler monitor guidance
+- Phase 2 is complete: deterministic `ccr_post_comments.py`, explicit `posting_approval.json` / `posting_manifest.json` / `posting_results.json`, fingerprint-based idempotency, and validated `DiffNote` posting flow
+- Detailed Phase 2 implementation plan: `quality/agents/ccr-phase2-implementation-plan.md`
 
 ---
 
@@ -33,15 +35,13 @@ Today the flow is roughly:
 ```text
 user
   -> quality/agents/ccr.md
-  -> diff/artifact preparation
+  -> quality/scripts/ccr_run.py
   -> quality/scripts/ccr_routing.py
   -> review_context.py + static_analysis.py
-  -> N reviewer passes via code_review.py / inline requirements prompts
-  -> consolidation logic in ccr.md
-  -> verification via code_review_verify.py
-  -> numbered report
+  -> N reviewer passes via code_review.py
+  -> deterministic consolidation + verification + numbered report
   -> AskUserQuestion
-  -> MR posting via glab commands described in ccr.md
+  -> quality/scripts/ccr_post_comments.py
 ```
 
 ### What is already strong

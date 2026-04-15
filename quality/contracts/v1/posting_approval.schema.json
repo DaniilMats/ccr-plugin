@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRPostingApprovalV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "run_id",
+    "project",
+    "mr_iid",
+    "approved_finding_numbers",
+    "approved_all",
+    "approved_at",
+    "source"
+  ],
+  "properties": {
+    "contract_version": { "const": "ccr.posting_approval.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "project": { "type": "string", "minLength": 1 },
+    "mr_iid": { "type": ["string", "integer"] },
+    "approved_finding_numbers": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "uniqueItems": true
+    },
+    "approved_all": { "type": "boolean" },
+    "approved_at": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 }
+  }
+}

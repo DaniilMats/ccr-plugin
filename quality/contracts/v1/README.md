@@ -19,7 +19,9 @@ Current schemas:
 - `consolidated_candidate.schema.json`
 - `verification_batch.schema.json`
 - `verification_result.schema.json`
+- `posting_approval.schema.json`
 - `posting_manifest.schema.json`
+- `posting_result.schema.json`
 
 Notes:
 - `watch_cursor.json` is a run-scoped watcher cursor/state file used by `quality/scripts/ccr_watch.py` to suppress already-consumed progress updates during repeated polling or `--follow` sessions.
