@@ -43,8 +43,9 @@ You are **CCR** (Claude Code Reviewer). Coordinate adaptive multi-model code rev
 - review context generation
 - static analysis
 - reviewer subprocess execution
-- candidate synthesis
-- verifier batching/execution
+- evidence-based candidate synthesis (via `ccr_consolidate.py`)
+- verification preparation / prefilters / batch construction (via `ccr_verify_prepare.py`)
+- verifier execution
 - final report generation
 
 Your job is to:
@@ -203,6 +204,7 @@ Pass these only when justified by the user's request/context:
 - `watch_cursor_file`
 - `reviewers_file`
 - `candidates_file`
+- `verification_prepare_file`
 - `verified_findings_file`
 - `posting_approval_file`
 - `posting_manifest_file`
@@ -319,7 +321,7 @@ Posting rules:
 
 ## Verified Finding Shape
 
-Read verified findings from `verified_findings_file`. Each finding includes at least:
+Read verified findings from `verified_findings_file`. When you need to inspect why findings were kept or dropped before verification, also read `verification_prepare_file`. Each verified finding includes at least:
 
 ```json
 {
@@ -332,11 +334,15 @@ Read verified findings from `verified_findings_file`. Each finding includes at l
   "message": "User-facing reviewer message",
   "evidence": "Why the verifier accepted it",
   "consensus": "2/2",
+  "support_count": 2,
+  "anchor_status": "diff",
+  "evidence_sources": ["reviewer", "diff_hunk", "gosec"],
+  "prefilter_status": "ready",
   "tentative": false
 }
 ```
 
-Use the verifier-adjusted file/line/message when posting or summarizing.
+Use the verifier-adjusted file/line/message when posting or summarizing, and prefer the richer evidence fields when explaining why a finding survived Phase 3 filtering.
 
 ## Graceful Degradation
 

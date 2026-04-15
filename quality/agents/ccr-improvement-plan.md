@@ -15,7 +15,7 @@ This plan is based on the current repository state in `~/ccr-plugin` and on prod
 
 ## Progress note
 
-As of 2026-04-14:
+As of 2026-04-15:
 - Phase 0 is complete: isolated run workspaces + versioned contracts
 - Phase 0.5 is complete: deterministic tests/fixtures + local smoke harness
 - Phase 1 is complete: deterministic harness entrypoint at `quality/scripts/ccr_run.py`
@@ -24,6 +24,7 @@ As of 2026-04-14:
 - Phase 1.3 is complete: compact/quiet watcher output, cursor-managed progress polling, `/loop`/scheduled-task limits documented, and Monitor-first live UX
 - Phase 1.3.1 is complete: clearer icon-prefixed watcher lines and stricter no-filler monitor guidance
 - Phase 2 is complete: deterministic `ccr_post_comments.py`, explicit `posting_approval.json` / `posting_manifest.json` / `posting_results.json`, fingerprint-based idempotency, and validated `DiffNote` posting flow
+- Phase 3 is complete: deterministic `ccr_consolidate.py` + `ccr_verify_prepare.py`, richer candidate/verified-finding contracts, machine-readable evidence bundles, anchor status, deterministic prefilters, and structured verification-prep artifacts
 - Detailed Phase 2 implementation plan: `quality/agents/ccr-phase2-implementation-plan.md`
 - Detailed Phase 3 implementation plan: `quality/agents/ccr-phase3-implementation-plan.md`
 
@@ -40,7 +41,9 @@ user
   -> quality/scripts/ccr_routing.py
   -> review_context.py + static_analysis.py
   -> N reviewer passes via code_review.py
-  -> deterministic consolidation + verification + numbered report
+  -> quality/scripts/ccr_consolidate.py
+  -> quality/scripts/ccr_verify_prepare.py
+  -> verification + numbered report
   -> AskUserQuestion
   -> quality/scripts/ccr_post_comments.py
 ```
@@ -387,7 +390,8 @@ This creates the approval boundary that production agent systems usually enforce
 ## Phase 3 — Make consolidation and verification evidence-based
 
 **Priority:** P1  
-**Target:** ~1 week
+**Target:** ~1 week  
+**Status:** Complete in `v0.5.0`
 
 ### Deliverables
 

@@ -55,7 +55,6 @@ _SHUFFLE_DIFF_SCRIPT = _LLM_PROXY_DIR / "shuffle_diff.py"
 _LOCAL_SCOPE_RE = re.compile(r"^(?:uncommitted|commit:.+|branch:.+|file:.+|package:.+)$")
 _MR_URL_RE = re.compile(r"^https?://(?P<host>[^/]+)/(?P<project>.+?)/-/merge_requests/(?P<iid>\d+)(?:[/?#].*)?$", re.IGNORECASE)
 _DIFF_HEADER_RE = re.compile(r"^diff --git a/(.+?) b/(.+)$")
-_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
 
 _PERSONA_ORDER = ("security", "concurrency", "performance", "requirements")
 _SEVERITY_ORDER = {"bug": 0, "warning": 1, "info": 2}
