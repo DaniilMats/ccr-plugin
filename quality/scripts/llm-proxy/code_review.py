@@ -406,6 +406,7 @@ def _build_prompt(
     static_analysis_text: str = "",
     requirements_text: str = "",
     review_context_text: str = "",
+    review_prepare_text: str = "",
 ) -> str:
     """
     Construct the full review prompt.
@@ -441,6 +442,7 @@ def _build_prompt(
     result = result.replace("{style_guide_section}", style_guide_section)
     result = result.replace("{requirements}", requirements_text)
     result = result.replace("{review_context}", review_context_text)
+    result = result.replace("{review_prepare}", review_prepare_text)
     result = result.replace("{semantic_guardrails}", semantic_guardrails_text)
     return result
 
@@ -652,6 +654,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "{review_context} placeholder in the prompt."
         ),
     )
+    parser.add_argument(
+        "--review-prepare-file",
+        default=None,
+        dest="review_prepare_file",
+        help=(
+            "Path to deterministic pre-review context JSON. When specified, fills the "
+            "{review_prepare} placeholder in supported prompts."
+        ),
+    )
     return parser
 
 
@@ -752,7 +763,20 @@ def main() -> None:
                 file=sys.stderr,
             )
 
-    # Step 5: Build prompt
+    # Step 5: Resolve review preparation text
+    review_prepare_text = ""
+    if args.review_prepare_file is not None:
+        try:
+            review_prepare_text = _load_text(args.review_prepare_file)
+        except OSError as exc:
+            print(
+                "WARNING: Could not load review prepare file {}: {}".format(
+                    args.review_prepare_file, exc
+                ),
+                file=sys.stderr,
+            )
+
+    # Step 6: Build prompt
     prompt = _build_prompt(
         diff=diff,
         style_guide_path=args.style_guide,
@@ -760,6 +784,7 @@ def main() -> None:
         static_analysis_text=static_analysis_text,
         requirements_text=requirements_text,
         review_context_text=review_context_text,
+        review_prepare_text=review_prepare_text,
     )
 
     if args.dry_run:
@@ -775,7 +800,7 @@ def main() -> None:
                 print("WARNING: Could not write output file: {}".format(exc), file=sys.stderr)
         sys.exit(0)
 
-    # Step 6: Invoke llm-proxy
+    # Step 7: Invoke llm-proxy
     schema_path = os.path.join(_HERE, "schemas", "code_review_response.schema.json")
 
     proxy_result = run_proxy(
@@ -787,10 +812,10 @@ def main() -> None:
         output_file=None,  # We handle output ourselves below
     )
 
-    # Step 7: Extract and structure review output
+    # Step 8: Extract and structure review output
     review_output = _extract_review_output(proxy_result, provider=args.provider)
 
-    # Step 8: Write output
+    # Step 9: Write output
     out_json = json.dumps(review_output, indent=2)
     print(out_json)
 

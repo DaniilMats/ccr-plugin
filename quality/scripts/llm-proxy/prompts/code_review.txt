@@ -50,6 +50,10 @@ Evaluate the code across these dimensions:
 
 {review_context}
 
+## Pre-Review Preparation Context
+
+{review_prepare}
+
 {semantic_guardrails}
 
 ## Output Format

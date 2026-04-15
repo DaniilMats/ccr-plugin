@@ -1,0 +1,158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRReviewPrepareV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contract_version",
+    "summary",
+    "requirements",
+    "changed",
+    "related_context",
+    "scenario_matrix",
+    "invariants",
+    "questions_to_verify",
+    "route_context",
+    "summary_text"
+  ],
+  "properties": {
+    "contract_version": { "const": "ccr.review_prepare.v1" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "changed_file_count",
+        "requirement_clause_count",
+        "conditional_clause_count",
+        "dimension_count",
+        "case_count",
+        "question_count"
+      ],
+      "properties": {
+        "changed_file_count": { "type": "integer", "minimum": 0 },
+        "requirement_clause_count": { "type": "integer", "minimum": 0 },
+        "conditional_clause_count": { "type": "integer", "minimum": 0 },
+        "dimension_count": { "type": "integer", "minimum": 0 },
+        "case_count": { "type": "integer", "minimum": 0 },
+        "question_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["has_requirements", "clauses"],
+      "properties": {
+        "has_requirements": { "type": "boolean" },
+        "clauses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["id", "text", "kind", "conditional"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "text": { "type": "string", "minLength": 1 },
+              "kind": { "type": "string", "minLength": 1 },
+              "conditional": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "changed": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["files", "symbols", "state_terms", "conditionals"],
+      "properties": {
+        "files": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "symbols": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "state_terms": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "conditionals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["change", "text"],
+            "properties": {
+              "change": { "enum": ["added", "removed"] },
+              "text": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "related_context": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["snippets"],
+      "properties": {
+        "snippets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["type", "text"],
+            "properties": {
+              "type": { "type": "string", "minLength": 1 },
+              "text": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "scenario_matrix": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["dimensions", "cases"],
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["name", "type", "values", "source"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "type": { "type": "string", "minLength": 1 },
+              "values": { "type": "array", "items": {} },
+              "source": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["id", "inputs", "check", "requirement_ids"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "inputs": { "type": "object", "additionalProperties": {} },
+              "check": { "type": "string", "minLength": 1 },
+              "requirement_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        }
+      }
+    },
+    "invariants": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "questions_to_verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "route_context": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["triggered_personas", "highest_risk_personas", "review_plan_summary"],
+      "properties": {
+        "triggered_personas": {
+          "type": ["array", "null"],
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "highest_risk_personas": {
+          "type": ["array", "null"],
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "review_plan_summary": { "type": ["string", "null"] }
+      }
+    },
+    "summary_text": { "type": "string", "minLength": 1 }
+  }
+}

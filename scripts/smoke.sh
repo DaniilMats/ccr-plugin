@@ -14,6 +14,7 @@ python3 -m py_compile \
   quality/scripts/ccr_watch.py \
   quality/scripts/ccr_post_comments.py \
   quality/scripts/ccr_report.py \
+  quality/scripts/ccr_review_prepare.py \
   quality/scripts/ccr_eval.py \
   quality/scripts/ccr_consolidate.py \
   quality/scripts/ccr_verify_prepare.py \
@@ -59,6 +60,25 @@ python3 quality/scripts/llm-proxy/review_context.py \
   --project-dir tests/fixtures/go_repo \
   --artifact-file tests/fixtures/go_repo/review_artifact.txt \
   --output-file "$TMP_DIR/review_context.md" > /dev/null
+
+echo "[smoke] review prepare helper"
+cat <<'EOF' > "$TMP_DIR/requirements.txt"
+ValidateToken must reject malformed input and preserve auth invariants.
+EOF
+python3 quality/scripts/ccr_review_prepare.py \
+  --artifact-file tests/fixtures/go_repo/review_artifact.txt \
+  --requirements-file "$TMP_DIR/requirements.txt" \
+  --review-context-file "$TMP_DIR/review_context.md" \
+  --output-file "$TMP_DIR/review_prepare.json" > "$TMP_DIR/review_prepare.stdout.json"
+python3 - <<'PY' "$TMP_DIR/review_prepare.stdout.json" "$TMP_DIR/review_prepare.json"
+import json, sys
+from pathlib import Path
+stdout_payload = json.loads(Path(sys.argv[1]).read_text())
+written_payload = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_payload["contract_version"] == "ccr.review_prepare.v1"
+assert stdout_payload["summary"]["requirement_clause_count"] >= 1
+assert written_payload == stdout_payload
+PY
 
 echo "[smoke] static analysis helper"
 python3 quality/scripts/llm-proxy/static_analysis.py \

@@ -35,6 +35,7 @@ from urllib.parse import quote, urlparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ccr_consolidate import CandidateRecord, build_candidates as consolidate_candidates
+from ccr_review_prepare import build_review_prepare_artifact
 from ccr_routing import RoutingInput, build_routing_plan
 from ccr_runtime.common import (
     dedupe_preserve_order as _dedupe_preserve_order,
@@ -1099,6 +1100,7 @@ def launch_ccr_detached(args: argparse.Namespace, raw_args: list[str]) -> dict[s
         "watch_cursor_file": manifest["watch_cursor_file"],
         "report_file": manifest["report_file"],
         "reviewers_file": manifest["reviewers_file"],
+        "review_prepare_file": manifest["review_prepare_file"],
         "candidates_file": manifest["candidates_file"],
         "verification_prepare_file": manifest["verification_prepare_file"],
         "verified_findings_file": manifest["verified_findings_file"],
@@ -1254,6 +1256,26 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
                 else "available"
             ),
             review_context_file=manifest["review_context_file"],
+        )
+        current_stage = None
+
+        current_stage = "review_prepare"
+        observer.start_stage(current_stage, "Preparing non-judgmental review context")
+        review_prepare_payload = build_review_prepare_artifact(
+            Path(manifest["diff_file"]),
+            requirements_file=Path(manifest["requirements_file"]),
+            review_context_file=Path(manifest["review_context_file"]),
+            route_input_file=Path(manifest["route_input_file"]),
+            route_plan_file=Path(manifest["route_plan_file"]),
+            output_file=Path(manifest["review_prepare_file"]),
+        )
+        observer.complete_stage(
+            current_stage,
+            "Review preparation context ready",
+            review_prepare_file=manifest["review_prepare_file"],
+            requirement_clause_count=(review_prepare_payload.get("summary") or {}).get("requirement_clause_count"),
+            case_count=(review_prepare_payload.get("summary") or {}).get("case_count"),
+            question_count=(review_prepare_payload.get("summary") or {}).get("question_count"),
         )
         current_stage = None
 
@@ -1414,6 +1436,7 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             "review_plan_summary": route_plan.get("summary"),
             "report_file": manifest["report_file"],
             "reviewers_file": manifest["reviewers_file"],
+            "review_prepare_file": manifest["review_prepare_file"],
             "candidates_file": manifest["candidates_file"],
             "verification_prepare_file": manifest["verification_prepare_file"],
             "verified_findings_file": manifest["verified_findings_file"],

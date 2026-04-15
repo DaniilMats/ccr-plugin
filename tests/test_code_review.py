@@ -88,6 +88,7 @@ class TestCodeReview(unittest.TestCase):
     def test_build_prompt_includes_semantic_guardrails_for_requirements_and_logic(self) -> None:
         diff = "+show := !omitOnEmpty\n"
         requirements = "omitOnEmpty hides the widget only when history is empty."
+        review_prepare = '{"summary_text": "Prepared scenario matrix for omitOnEmpty"}'
 
         requirements_prompt = self.module._build_prompt(
             diff=diff,
@@ -96,6 +97,7 @@ class TestCodeReview(unittest.TestCase):
             static_analysis_text="",
             requirements_text=requirements,
             review_context_text="Nearby tests cover trusted and untrusted branches.",
+            review_prepare_text=review_prepare,
         )
         logic_prompt = self.module._build_prompt(
             diff=diff,
@@ -104,6 +106,7 @@ class TestCodeReview(unittest.TestCase):
             static_analysis_text="",
             requirements_text=requirements,
             review_context_text="Nearby tests cover trusted and untrusted branches.",
+            review_prepare_text=review_prepare,
         )
         security_prompt = self.module._build_prompt(
             diff=diff,
@@ -112,12 +115,15 @@ class TestCodeReview(unittest.TestCase):
             static_analysis_text="",
             requirements_text=requirements,
             review_context_text="Nearby tests cover trusted and untrusted branches.",
+            review_prepare_text=review_prepare,
         )
 
         self.assertIn("## Semantic Guardrails", requirements_prompt)
         self.assertIn("## Semantic Guardrails", logic_prompt)
         self.assertIn("omitOnEmpty", requirements_prompt)
         self.assertIn("truth table", logic_prompt)
+        self.assertIn("Prepared scenario matrix for omitOnEmpty", requirements_prompt)
+        self.assertIn("Prepared scenario matrix for omitOnEmpty", logic_prompt)
         self.assertNotIn("## Semantic Guardrails", security_prompt)
 
     def test_extract_review_output_handles_code_fences_and_invalid_json(self) -> None:

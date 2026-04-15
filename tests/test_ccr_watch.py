@@ -62,8 +62,8 @@ class TestCCRWatch(unittest.TestCase):
                     "started_at": "2026-04-14T22:55:00Z",
                     "ended_at": None,
                     "duration_ms": None,
-                    "index": 7,
-                    "total": 10,
+                    "index": 8,
+                    "total": 11,
                 },
                 "stages": {},
                 "target": {},
@@ -131,7 +131,7 @@ class TestCCRWatch(unittest.TestCase):
                 text=True,
                 check=True,
             )
-            self.assertIn("⏳ CCR abcd1234 · running · Reviewers [7/10]", first.stdout)
+            self.assertIn("⏳ CCR abcd1234 · running · Reviewers [8/11]", first.stdout)
             self.assertIn("▶ Reviewers +1 ⇒ 4/14 complete · 10 running · Logic x3, Security x1", first.stdout)
             self.assertIn("⚠ Reviewer signals: 1 finding(s) · security_p1", first.stdout)
 
@@ -224,8 +224,8 @@ class TestCCRWatch(unittest.TestCase):
                     "started_at": "2026-04-14T23:30:00Z",
                     "ended_at": None,
                     "duration_ms": None,
-                    "index": 7,
-                    "total": 10,
+                    "index": 8,
+                    "total": 11,
                 },
                 "stages": {},
                 "target": {},
@@ -291,7 +291,7 @@ class TestCCRWatch(unittest.TestCase):
                 text=True,
                 check=True,
             )
-            self.assertIn("⏳ CCR ef901234 · running · Reviewers [7/10]", result.stdout)
+            self.assertIn("⏳ CCR ef901234 · running · Reviewers [8/11]", result.stdout)
             self.assertIn("▶ Reviewers +2 ⇒ 5/14 complete · 9 running · Logic x3, Security x2", result.stdout)
             self.assertIn("⚠ Reviewer signals: 3 finding(s) · requirements_p1, security_p2", result.stdout)
             self.assertNotIn("Reviewer 4/14 finished", result.stdout)

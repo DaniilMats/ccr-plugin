@@ -75,6 +75,8 @@ def build_reviewer_command(
         manifest["static_analysis_file"],
         "--review-context-file",
         manifest["review_context_file"],
+        "--review-prepare-file",
+        manifest["review_prepare_file"],
         "--output-file",
         output_path,
         "--timeout",

@@ -157,6 +157,7 @@ def _resolve_context(*, run_dir: Path | None, summary_file: Path | None, manifes
     route_plan = _safe_load(_artifact_path(manifest or summary, "route_plan_file", default_run_dir=effective_run_dir, default_name="route_plan.json"))
     run_metrics = _safe_load(_artifact_path(summary, "run_metrics_file", default_run_dir=effective_run_dir, default_name="run_metrics.json"))
     reviewers = _safe_load(_artifact_path(summary, "reviewers_file", default_run_dir=effective_run_dir, default_name="reviewers.json"))
+    review_prepare = _safe_load(_artifact_path(summary, "review_prepare_file", default_run_dir=effective_run_dir, default_name="review_prepare.json"))
     verification_prepare = _safe_load(_artifact_path(summary, "verification_prepare_file", default_run_dir=effective_run_dir, default_name="verification_prepare.json"))
     verified_findings = _safe_load(_artifact_path(summary, "verified_findings_file", default_run_dir=effective_run_dir, default_name="verified_findings.json"))
     posting_results = _safe_load(_artifact_path(summary, "posting_results_file", default_run_dir=effective_run_dir, default_name="posting_results.json"))
@@ -170,6 +171,7 @@ def _resolve_context(*, run_dir: Path | None, summary_file: Path | None, manifes
         "route_plan": route_plan or {},
         "run_metrics": run_metrics or {},
         "reviewers": reviewers or {},
+        "review_prepare": review_prepare or {},
         "verification_prepare": verification_prepare or {},
         "verified_findings": verified_findings or {},
         "posting_results": posting_results or {},
@@ -185,6 +187,7 @@ def build_run_report(*, run_dir: Path | None = None, summary_file: Path | None =
     route_plan = context["route_plan"]
     run_metrics = context["run_metrics"]
     reviewers_payload = context["reviewers"]
+    review_prepare_payload = context["review_prepare"]
     verification_prepare = context["verification_prepare"]
     verified_findings_payload = context["verified_findings"]
     posting_results = context["posting_results"]
@@ -210,6 +213,7 @@ def build_run_report(*, run_dir: Path | None = None, summary_file: Path | None =
 
     verified_findings = verified_findings_payload.get("verified_findings") if isinstance(verified_findings_payload.get("verified_findings"), list) else []
     verified_count = int(summary.get("verified_finding_count") or verification_summary.get("verified_count") or len(verified_findings))
+    review_prepare_summary = review_prepare_payload.get("summary") if isinstance(review_prepare_payload.get("summary"), dict) else {}
     candidate_summary = verification_prepare.get("summary") if isinstance(verification_prepare.get("summary"), dict) else {}
 
     funnel = {
@@ -236,6 +240,7 @@ def build_run_report(*, run_dir: Path | None = None, summary_file: Path | None =
         "summary_file": str(_artifact_path(summary, "summary_file", default_run_dir=effective_run_dir, default_name="run_summary.json") or ""),
         "run_metrics_file": str(_artifact_path(summary, "run_metrics_file", default_run_dir=effective_run_dir, default_name="run_metrics.json") or ""),
         "reviewers_file": str(_artifact_path(summary, "reviewers_file", default_run_dir=effective_run_dir, default_name="reviewers.json") or ""),
+        "review_prepare_file": str(_artifact_path(summary, "review_prepare_file", default_run_dir=effective_run_dir, default_name="review_prepare.json") or ""),
         "verification_prepare_file": str(_artifact_path(summary, "verification_prepare_file", default_run_dir=effective_run_dir, default_name="verification_prepare.json") or ""),
         "verified_findings_file": str(_artifact_path(summary, "verified_findings_file", default_run_dir=effective_run_dir, default_name="verified_findings.json") or ""),
         "posting_results_file": str(_artifact_path(summary, "posting_results_file", default_run_dir=effective_run_dir, default_name="posting_results.json") or ""),
@@ -253,6 +258,7 @@ def build_run_report(*, run_dir: Path | None = None, summary_file: Path | None =
         "review_plan_summary": review_plan_summary,
         "reviewer_mix": reviewer_mix,
         "provider_breakdown": provider_breakdown,
+        "review_prepare": review_prepare_summary,
         "funnel": funnel,
         "reviewers": reviewers_summary,
         "verification": verification_summary,
@@ -292,6 +298,17 @@ def render_report_text(payload: dict[str, Any]) -> str:
     duration_value = payload.get("duration_ms")
     if isinstance(duration_value, int):
         lines.append(f"Duration: {format_milliseconds_short(duration_value)}")
+
+    review_prepare = payload.get("review_prepare") if isinstance(payload.get("review_prepare"), dict) else {}
+    if review_prepare:
+        lines.append(
+            "Review prep: clauses={clauses} · dimensions={dimensions} · cases={cases} · questions={questions}".format(
+                clauses=int(review_prepare.get("requirement_clause_count") or 0),
+                dimensions=int(review_prepare.get("dimension_count") or 0),
+                cases=int(review_prepare.get("case_count") or 0),
+                questions=int(review_prepare.get("question_count") or 0),
+            )
+        )
 
     funnel = payload.get("funnel") if isinstance(payload.get("funnel"), dict) else {}
     lines.append(
@@ -358,6 +375,7 @@ def render_report_text(payload: dict[str, Any]) -> str:
             "summary_file",
             "run_metrics_file",
             "reviewers_file",
+            "review_prepare_file",
             "verification_prepare_file",
             "verified_findings_file",
             "posting_results_file",

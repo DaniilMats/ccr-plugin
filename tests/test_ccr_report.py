@@ -25,6 +25,7 @@ class TestCCRReport(unittest.TestCase):
             summary_file = run_dir / "run_summary.json"
             metrics_file = run_dir / "run_metrics.json"
             reviewers_file = run_dir / "reviewers.json"
+            review_prepare_file = run_dir / "review_prepare.json"
             verification_prepare_file = run_dir / "verification_prepare.json"
             posting_results_file = run_dir / "posting_results.json"
             verified_findings_file = run_dir / "verified_findings.json"
@@ -41,6 +42,7 @@ class TestCCRReport(unittest.TestCase):
                     "summary_file": str(summary_file),
                     "run_metrics_file": str(metrics_file),
                     "reviewers_file": str(reviewers_file),
+                    "review_prepare_file": str(review_prepare_file),
                     "verification_prepare_file": str(verification_prepare_file),
                     "verified_findings_file": str(verified_findings_file),
                     "posting_results_file": str(posting_results_file),
@@ -141,6 +143,20 @@ class TestCCRReport(unittest.TestCase):
                 },
             )
             self._write_json(
+                review_prepare_file,
+                {
+                    "contract_version": "ccr.review_prepare.v1",
+                    "summary": {
+                        "changed_file_count": 1,
+                        "requirement_clause_count": 2,
+                        "conditional_clause_count": 1,
+                        "dimension_count": 3,
+                        "case_count": 4,
+                        "question_count": 2,
+                    },
+                },
+            )
+            self._write_json(
                 verification_prepare_file,
                 {
                     "contract_version": "ccr.verification_prepare.v1",
@@ -180,6 +196,7 @@ class TestCCRReport(unittest.TestCase):
             )
             self.assertIn("Plan: Review plan: medium-risk MR → Logic x3, Security x2", result.stdout)
             self.assertIn("Reviewer mix: Logic x3, Security x2", result.stdout)
+            self.assertIn("Review prep: clauses=2 · dimensions=3 · cases=4 · questions=2", result.stdout)
             self.assertIn("Funnel: reviewers 5/5 · findings=4 · candidates=3 · ready=2 · verified=1 · posted=1", result.stdout)
             self.assertIn("Providers: claude x1, codex x3, gemini x2", result.stdout)
             self.assertIn("- schema retries=2", result.stdout)

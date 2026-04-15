@@ -120,6 +120,10 @@ Finding:
 
 {review_context}
 
+## Pre-Review Preparation Context
+
+{review_prepare}
+
 {semantic_guardrails}
 
 {style_guide_section}

@@ -35,6 +35,7 @@ class TestContracts(unittest.TestCase):
             "llm_invocation.schema.json",
             "reviewer_result.schema.json",
             "reviewers_manifest.schema.json",
+            "review_prepare.schema.json",
             "consolidated_candidate.schema.json",
             "candidates_manifest.schema.json",
             "verification_prepare.schema.json",
@@ -81,8 +82,8 @@ class TestContracts(unittest.TestCase):
                 "started_at": "2026-04-14T22:01:00Z",
                 "ended_at": None,
                 "duration_ms": None,
-                "index": 7,
-                "total": 10
+                "index": 8,
+                "total": 11
             },
             "stages": {
                 "routing": {
@@ -147,6 +148,7 @@ class TestContracts(unittest.TestCase):
             "detached": True,
             "report_file": "/tmp/ccr/run/report.md",
             "reviewers_file": "/tmp/ccr/run/reviewers.json",
+            "review_prepare_file": "/tmp/ccr/run/review_prepare.json",
             "candidates_file": "/tmp/ccr/run/candidates.json",
             "verification_prepare_file": "/tmp/ccr/run/verification_prepare.json",
             "verified_findings_file": "/tmp/ccr/run/verified_findings.json",
@@ -181,6 +183,7 @@ class TestContracts(unittest.TestCase):
             "watch_cursor_file": "/tmp/ccr/run/watch_cursor.json",
             "report_file": "/tmp/ccr/run/report.md",
             "reviewers_file": "/tmp/ccr/run/reviewers.json",
+            "review_prepare_file": "/tmp/ccr/run/review_prepare.json",
             "candidates_file": "/tmp/ccr/run/candidates.json",
             "verification_prepare_file": "/tmp/ccr/run/verification_prepare.json",
             "verified_findings_file": "/tmp/ccr/run/verified_findings.json",
@@ -209,8 +212,8 @@ class TestContracts(unittest.TestCase):
             "current_stage": {
                 "name": "reviewers",
                 "status": "running",
-                "index": 7,
-                "total": 10
+                "index": 8,
+                "total": 11
             },
             "reviewers": {
                 "planned": 14,
@@ -228,7 +231,7 @@ class TestContracts(unittest.TestCase):
                 }
             ],
             "display_lines": [
-                "Run 20260414T220000Z-1234-abcd1234: state=running, stage=[7/10] reviewers"
+                "Run 20260414T220000Z-1234-abcd1234: state=running, stage=[8/11] reviewers"
             ],
             "next_poll_sec": 10
         }
@@ -252,6 +255,76 @@ class TestContracts(unittest.TestCase):
             "schema_violations": [],
         }
         self._assert_valid(payload, "llm_invocation.schema.json")
+
+    def test_review_prepare_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.review_prepare.v1",
+            "summary": {
+                "changed_file_count": 1,
+                "requirement_clause_count": 2,
+                "conditional_clause_count": 1,
+                "dimension_count": 3,
+                "case_count": 4,
+                "question_count": 3,
+            },
+            "requirements": {
+                "has_requirements": True,
+                "clauses": [
+                    {
+                        "id": "R1",
+                        "text": "omitOnEmpty hides the widget only when history is empty",
+                        "kind": "visibility",
+                        "conditional": True,
+                    }
+                ],
+            },
+            "changed": {
+                "files": ["internal/layout/widgetmanager/builder/widgets/shortwidget/widget.go"],
+                "symbols": ["omitOnEmpty", "hasTransactions"],
+                "state_terms": ["untrusted", "history", "transactions"],
+                "conditionals": [
+                    {
+                        "change": "added",
+                        "text": "show := !omitOnEmpty",
+                    }
+                ],
+            },
+            "related_context": {
+                "snippets": [
+                    {
+                        "type": "test",
+                        "text": "TestShortWidgetBuild_UntrustedDevice_OmitOnEmpty_WithTransactions_ShowsUntrusted",
+                    }
+                ],
+            },
+            "scenario_matrix": {
+                "dimensions": [
+                    {
+                        "name": "omitOnEmpty",
+                        "type": "boolean",
+                        "values": [True, False],
+                        "source": "symbol",
+                    }
+                ],
+                "cases": [
+                    {
+                        "id": "C1",
+                        "inputs": {"omitOnEmpty": True},
+                        "check": "Compare this combination against requirement clauses.",
+                        "requirement_ids": ["R1"],
+                    }
+                ],
+            },
+            "invariants": ["Visibility semantics mention both the flag and data presence."],
+            "questions_to_verify": ["Does every branch preserve both operands?"],
+            "route_context": {
+                "triggered_personas": ["security", "requirements"],
+                "highest_risk_personas": ["security", "requirements"],
+                "review_plan_summary": "Review plan: high-risk MR → Logic x3, Security x3, Requirements x2",
+            },
+            "summary_text": "Prepared 2 requirement clauses, 3 scenario dimensions, and 4 scenario cases for downstream reviewers.",
+        }
+        self._assert_valid(payload, "review_prepare.schema.json")
 
     def test_reviewer_result_contract(self) -> None:
         payload = {

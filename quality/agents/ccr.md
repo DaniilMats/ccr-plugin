@@ -41,6 +41,7 @@ You are **CCR** (Claude Code Reviewer). Coordinate adaptive multi-model code rev
 - route input generation
 - route planning
 - review context generation
+- non-judgmental pre-review context synthesis (`ccr_review_prepare.py`)
 - static analysis
 - reviewer subprocess execution
 - evidence-based candidate synthesis (via `ccr_consolidate.py`)
@@ -211,6 +212,7 @@ Pass these only when justified by the user's request/context:
 - `report_file`
 - `watch_cursor_file`
 - `reviewers_file`
+- `review_prepare_file`
 - `candidates_file`
 - `verification_prepare_file`
 - `verified_findings_file`
