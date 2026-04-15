@@ -15,6 +15,8 @@ class CodexAdapter(BaseAdapter):
     """Adapter for the OpenAI Codex CLI (`codex` command)."""
 
     PROVIDER = "codex"
+    DEFAULT_MODEL = "gpt-5.4"
+    DEFAULT_REASONING_EFFORT = "xhigh"
 
     def __init__(self, thread_dir: str = ""):
         super().__init__(thread_dir)
@@ -31,7 +33,16 @@ class CodexAdapter(BaseAdapter):
         full_prompt = scope_ctx + prompt
 
         # Build codex command
-        cmd = ["codex", "exec", "-c", "model=gpt-5.4", "--sandbox", "read-only"]
+        cmd = [
+            "codex",
+            "exec",
+            "-c",
+            f"model={self.DEFAULT_MODEL}",
+            "-c",
+            f"model_reasoning_effort={self.DEFAULT_REASONING_EFFORT}",
+            "--sandbox",
+            "read-only",
+        ]
 
         # Thread resume: pass thread ID via env var if codex supports it
         env_extras: dict = {}
