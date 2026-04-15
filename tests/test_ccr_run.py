@@ -216,6 +216,140 @@ class TestCCRRun(unittest.TestCase):
             self.assertIn("1. [WARNING] internal/auth/jwt.go:22", report)
             self.assertIn("2. [BUG] internal/auth/jwt.go:12", report)
 
+    def test_merge_verified_findings_filters_uncertain_missing_and_dropped_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = self.module._build_manifest(Path(tmp), "test-run-filtering")
+            candidates = [
+                self.module.CandidateRecord(
+                    candidate_id="F1",
+                    persona="security",
+                    severity="bug",
+                    file="internal/auth/jwt.go",
+                    line=12,
+                    message="Weakly supported uncertain finding.",
+                    reviewers=["security_p1"],
+                    consensus="1/3",
+                    evidence_sources=["reviewer"],
+                    support_count=1,
+                    available_pass_count=3,
+                    anchor_status="diff",
+                    prefilter={"ready_for_verification": True, "drop_reasons": []},
+                ),
+                self.module.CandidateRecord(
+                    candidate_id="F2",
+                    persona="security",
+                    severity="bug",
+                    file="internal/auth/jwt.go",
+                    line=24,
+                    message="Missing anchor uncertain finding.",
+                    reviewers=["security_p1", "security_p2"],
+                    consensus="2/3",
+                    evidence_sources=["reviewer"],
+                    support_count=2,
+                    available_pass_count=3,
+                    anchor_status="missing",
+                    prefilter={"ready_for_verification": True, "drop_reasons": []},
+                ),
+                self.module.CandidateRecord(
+                    candidate_id="F3",
+                    persona="logic",
+                    severity="warning",
+                    file="internal/auth/jwt.go",
+                    line=28,
+                    message="Dropped before verification.",
+                    reviewers=["logic_p1", "logic_p2"],
+                    consensus="2/3",
+                    evidence_sources=["reviewer"],
+                    support_count=2,
+                    available_pass_count=3,
+                    anchor_status="diff",
+                    prefilter={"ready_for_verification": False, "drop_reasons": ["missing_evidence"]},
+                ),
+                self.module.CandidateRecord(
+                    candidate_id="F4",
+                    persona="logic",
+                    severity="warning",
+                    file="internal/auth/jwt.go",
+                    line=30,
+                    message="Tentative but sufficiently supported finding.",
+                    reviewers=["logic_p1", "logic_p2"],
+                    consensus="2/3",
+                    evidence_sources=["reviewer", "file_context"],
+                    support_count=2,
+                    available_pass_count=3,
+                    anchor_status="file_context",
+                    prefilter={"ready_for_verification": True, "drop_reasons": []},
+                    evidence_bundle={
+                        "diff_hunk": None,
+                        "file_context": "return &TokenClaims{Subject: trimmed}, nil",
+                        "requirements_excerpt": None,
+                        "static_analysis": [],
+                    },
+                ),
+            ]
+            verification_results = [
+                {
+                    "batch_id": "batch-1",
+                    "status": "succeeded",
+                    "result": {
+                        "verified_findings": [
+                            {"candidate_id": "F1", "verdict": "uncertain", "evidence": "Weak support."},
+                            {"candidate_id": "F2", "verdict": "uncertain", "evidence": "Anchor missing."},
+                            {"candidate_id": "F3", "verdict": "confirmed", "evidence": "Would otherwise pass."},
+                            {
+                                "candidate_id": "F4",
+                                "verdict": "uncertain",
+                                "file": "internal/auth/jwt.go",
+                                "line": 30,
+                                "revised_message": "Tentative but acceptable finding.",
+                                "evidence": "Supported by corroborating reviewers.",
+                            },
+                        ]
+                    },
+                }
+            ]
+
+            merged = self.module._merge_verified_findings(
+                manifest,
+                candidates=candidates,
+                verification_results=verification_results,
+            )
+
+            self.assertEqual([item["candidate_id"] for item in merged], ["F4"])
+            self.assertTrue(merged[0]["tentative"])
+            self.assertEqual(merged[0]["finding_number"], 1)
+            self.assertEqual(merged[0]["prefilter_status"], "ready")
+            self.assertEqual(merged[0]["anchor_status"], "file_context")
+            self.assertIn("file_context", merged[0]["evidence_sources"])
+
+    def test_write_static_analysis_artifact_falls_back_without_project_or_go_mod(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = self.module._build_manifest(Path(tmp), "test-run-static-analysis")
+
+            unavailable = self.module._write_static_analysis_artifact(
+                manifest,
+                None,
+                [],
+                dry_run=False,
+            )
+            self.assertEqual(unavailable["contract_version"], "ccr.static_analysis.v1")
+            self.assertEqual(unavailable["error"], "project directory unavailable")
+
+            project_dir = Path(tmp) / "no_go_mod_repo"
+            project_dir.mkdir()
+            missing_go_mod = self.module._write_static_analysis_artifact(
+                manifest,
+                project_dir,
+                [],
+                dry_run=False,
+            )
+            self.assertEqual(missing_go_mod["error"], "go.mod not found")
+
+            written = json.loads(Path(manifest["static_analysis_file"]).read_text(encoding="utf-8"))
+            log_text = Path(manifest["logs_dir"]) .joinpath("static_analysis.stderr.txt").read_text(encoding="utf-8")
+            self.assertEqual(written["error"], "go.mod not found")
+            self.assertIn("go.mod not found", log_text)
+
     def test_detach_launch_and_watch_flow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             launch_result = subprocess.run(

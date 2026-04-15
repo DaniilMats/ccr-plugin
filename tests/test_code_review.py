@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from util import FIXTURES_DIR, load_module
+
+
+class TestCodeReview(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.module = load_module("code_review_module", "quality/scripts/llm-proxy/code_review.py")
+        cls.fixture_repo = FIXTURES_DIR / "go_repo"
+
+    def test_resolve_scope_review_files_for_file_and_package(self) -> None:
+        project_dir = str(self.fixture_repo)
+        file_path = self.fixture_repo / "internal" / "auth" / "jwt.go"
+        package_path = self.fixture_repo / "internal" / "auth"
+
+        file_kind, file_paths = self.module._resolve_scope_review_files(f"file:{file_path}", project_dir)
+        package_kind, package_files = self.module._resolve_scope_review_files(f"package:{package_path}", project_dir)
+
+        self.assertEqual(file_kind, "file")
+        self.assertEqual(file_paths, [str(file_path)])
+        self.assertEqual(package_kind, "package")
+        self.assertEqual([Path(path).name for path in package_files], ["jwt.go", "jwt_test.go"])
+
+    def test_generate_diff_builds_synthetic_review_artifact_for_file_scope(self) -> None:
+        file_path = self.fixture_repo / "internal" / "auth" / "jwt.go"
+        with patch.object(self.module.os, "getcwd", return_value=str(self.fixture_repo)):
+            diff = self.module._generate_diff(f"file:{file_path}")
+
+        self.assertIn("NOTE: This is a synthetic full-code review artifact.", diff)
+        self.assertIn("diff --git a/internal/auth/jwt.go b/internal/auth/jwt.go", diff)
+        self.assertIn("+func ValidateToken(raw string) (*TokenClaims, error) {", diff)
+        self.assertIn("return &TokenClaims{Subject: trimmed}, nil", diff)
+
+    def test_format_sa_for_prompt_filters_by_persona(self) -> None:
+        sa_data = {
+            "go_vet": [
+                {"tool": "go_vet", "file": "internal/auth/jwt.go", "line": 10, "message": "logic"}
+            ],
+            "staticcheck": [
+                {"tool": "staticcheck", "file": "internal/auth/jwt.go", "line": 12, "message": "all", "code": "SA1000"}
+            ],
+            "gosec": [
+                {"tool": "gosec", "file": "internal/auth/jwt.go", "line": 24, "message": "security", "code": "G101"}
+            ],
+        }
+
+        security_text = self.module._format_sa_for_prompt(sa_data, "security")
+        requirements_text = self.module._format_sa_for_prompt(sa_data, "requirements")
+        error_text = self.module._format_sa_for_prompt({"error": "boom"}, "logic")
+
+        self.assertIn("(gosec)", security_text)
+        self.assertNotIn("(go_vet)", security_text)
+        self.assertEqual(requirements_text, "")
+        self.assertEqual(error_text, "(static analysis unavailable: boom)")
+
+    def test_extract_review_output_handles_code_fences_and_invalid_json(self) -> None:
+        parsed = self.module._extract_review_output(
+            {
+                "response": "```json\n{\"findings\": [], \"summary\": \"ok\"}\n```",
+                "exit_code": 0,
+            }
+        )
+        fallback = self.module._extract_review_output(
+            {
+                "response": "not-json",
+                "exit_code": 0,
+            }
+        )
+
+        self.assertEqual(parsed["contract_version"], "ccr.reviewer_result.v1")
+        self.assertEqual(parsed["summary"], "ok")
+        self.assertEqual(parsed["raw_response"], "```json\n{\"findings\": [], \"summary\": \"ok\"}\n```")
+        self.assertEqual(fallback["findings"], [])
+        self.assertIn("not valid JSON", fallback["summary"])
+
+
+if __name__ == "__main__":
+    unittest.main()

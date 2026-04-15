@@ -184,6 +184,7 @@ def run_proxy(
     if last_response is None:
         last_response = ProxyResponse(exit_code=1, error="No response generated", duration_ms=_elapsed_ms())
 
+    last_response.thread_id = thread_id
     last_response.schema_retries = schema_retries
     last_response.duration_ms = _elapsed_ms()
     out = last_response.to_dict()

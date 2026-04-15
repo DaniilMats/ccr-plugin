@@ -50,6 +50,98 @@ python3 quality/scripts/llm-proxy/review_context.py \
   --artifact-file tests/fixtures/go_repo/review_artifact.txt \
   --output-file "$TMP_DIR/review_context.md" > /dev/null
 
+echo "[smoke] static analysis helper"
+python3 quality/scripts/llm-proxy/static_analysis.py \
+  --project-dir tests/fixtures/go_repo \
+  --dry-run \
+  --output-file "$TMP_DIR/static_analysis.json" > "$TMP_DIR/static_analysis.stdout.json"
+python3 - <<'PY' "$TMP_DIR/static_analysis.stdout.json" "$TMP_DIR/static_analysis.json"
+import json, sys
+from pathlib import Path
+stdout_payload = json.loads(Path(sys.argv[1]).read_text())
+written_payload = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_payload["contract_version"] == "ccr.static_analysis.v1"
+assert stdout_payload["tools_available"]["go_vet"] is True
+assert written_payload == stdout_payload
+PY
+
+echo "[smoke] shuffle diff"
+python3 quality/scripts/llm-proxy/shuffle_diff.py \
+  --input-file tests/fixtures/go_repo/review_artifact.txt \
+  --output-file "$TMP_DIR/shuffled_review_artifact.txt" \
+  --seed 7
+python3 - <<'PY' "$TMP_DIR/shuffled_review_artifact.txt"
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+assert "diff --git" in text
+assert text.endswith("\n")
+PY
+
+echo "[smoke] llm proxy dry-run"
+python3 quality/scripts/llm-proxy/llm_proxy.py \
+  --provider codex \
+  --prompt "Smoke prompt" \
+  --dry-run \
+  --output-file "$TMP_DIR/llm_proxy.json" > "$TMP_DIR/llm_proxy.stdout.json"
+python3 - <<'PY' "$TMP_DIR/llm_proxy.stdout.json" "$TMP_DIR/llm_proxy.json"
+import json, sys
+from pathlib import Path
+stdout_payload = json.loads(Path(sys.argv[1]).read_text())
+written_payload = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_payload["exit_code"] == 0
+assert stdout_payload["schema_valid"] is True
+assert "[dry-run]" in stdout_payload["response"]
+assert written_payload == stdout_payload
+PY
+
+echo "[smoke] code review artifact-only"
+python3 quality/scripts/llm-proxy/code_review.py \
+  --scope package:tests/fixtures/go_repo/internal/auth \
+  --artifact-only \
+  --artifact-output "$TMP_DIR/code_review_artifact.txt" > /dev/null
+python3 - <<'PY' "$TMP_DIR/code_review_artifact.txt"
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+assert "NOTE: This is a synthetic full-code review artifact." in text
+assert "diff --git a/tests/fixtures/go_repo/internal/auth/jwt.go b/tests/fixtures/go_repo/internal/auth/jwt.go" in text
+PY
+
+echo "[smoke] code review verify dry-run"
+python3 - <<'PY' "$TMP_DIR/verify_input.json"
+import json, sys
+from pathlib import Path
+Path(sys.argv[1]).write_text(json.dumps({
+    "file": "internal/auth/jwt.go",
+    "diff_hunk": "@@ -1,1 +1,2 @@",
+    "file_context": "return &TokenClaims{Subject: trimmed}, nil",
+    "requirements": "ValidateToken must reject expired tokens.",
+    "candidates": [
+        {
+            "candidate_id": "F1",
+            "file": "internal/auth/jwt.go",
+            "line": 24,
+            "message": "ValidateToken returns claims without expiry validation."
+        }
+    ]
+}, indent=2) + "\n", encoding="utf-8")
+PY
+python3 quality/scripts/llm-proxy/code_review_verify.py \
+  --input-file "$TMP_DIR/verify_input.json" \
+  --provider codex \
+  --dry-run \
+  --output-file "$TMP_DIR/verify_result.json" > "$TMP_DIR/verify_result.stdout.json"
+python3 - <<'PY' "$TMP_DIR/verify_result.stdout.json" "$TMP_DIR/verify_result.json"
+import json, sys
+from pathlib import Path
+stdout_payload = json.loads(Path(sys.argv[1]).read_text())
+written_payload = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_payload["contract_version"] == "ccr.verification_result.v1"
+assert stdout_payload["verified_findings"][0]["verdict"] == "uncertain"
+assert written_payload == stdout_payload
+PY
+
 echo "[smoke] consolidation helper"
 python3 - <<'PY' "$TMP_DIR/consolidate_input.reviewers.json" "$TMP_DIR/consolidate_input.route_plan.json" "$TMP_DIR/consolidate_input.static_analysis.json"
 import json, sys
