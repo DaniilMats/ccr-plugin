@@ -37,4 +37,5 @@ Notes:
 - `reviewers.json` is a structured reviewers manifest emitted by `quality/scripts/ccr_run.py`; its pass entries and summary may include normalized LLM telemetry and provider aggregates.
 - `run_metrics.json` is a run-scoped aggregate metrics artifact that summarizes routing/reviewer/candidate/verification/posting counters plus provider/token/schema-repair aggregates.
 - `posting_results.json` may include a structured publish summary with approved/ready/posted/skipped/failed counts plus persona/severity breakdowns for post-run inspection.
+- `quality/scripts/ccr_eval.py` writes repo-local summaries under `evals/ccr/results/...`; those eval outputs are intentionally local regression artifacts and are not yet treated as stable v1 harness contracts.
 - The cursor file is intentionally lightweight adapter state and is not treated as a harness contract schema.

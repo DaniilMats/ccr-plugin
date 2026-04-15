@@ -22,6 +22,8 @@ As of 2026-04-15:
 - Step 2 is complete: `code_review.py` and `code_review_verify.py` now persist normalized `llm_invocation` telemetry, including schema-retry visibility, in structured outputs.
 - Step 3 is complete: `ccr_run.py` now threads reviewer/verifier telemetry into `reviewers.json`, `status.json`, `trace.jsonl`, `verified_findings.json` batch metadata, and richer `run_metrics.json` provider/schema aggregates.
 - Step 4 is complete: `ccr_post_comments.py` now writes richer `posting_results.json` summaries with deterministic status counts, attempt totals, and persona/severity publish breakdowns.
+- Step 5 is complete: repo-local eval fixture suites now live under `evals/ccr/`, and `quality/scripts/ccr_eval.py` / `scripts/evals.sh` can run deterministic offline regression suites for routing, consolidation, verification preparation, and posting.
+- The planned non-CI Phase 4 scope is complete; CI integration remains intentionally deferred.
 
 ---
 
@@ -466,6 +468,8 @@ Phase 4 (non-CI) is complete when:
 
 ## Recommended immediate next move
 
-Proceed to **Step 5 — local eval fixtures and runner**.
+Phase 4 non-CI work is complete.
 
-That turns the now-stabilized routing/consolidation/verification/posting artifacts into deterministic local regression suites before any CI rollout is attempted.
+The next sensible move is either:
+1. keep CI explicitly deferred and start **Phase 5** feedback-driven routing/policy tuning using the new local metrics + eval substrate, or
+2. separately wire the new eval/observability artifacts into CI later once the local runner and fixtures have stabilized further.

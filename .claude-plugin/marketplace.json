@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "ccr-marketplace",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Marketplace hosting the CCR plugin — adaptive multi-model code reviewer.",
   "owner": {
     "name": "Daniil Matsiutsia",
@@ -11,7 +11,7 @@
     {
       "name": "quality",
       "description": "Adaptive multi-model code reviewer (CCR). Reviews GitLab MRs, local diffs, Go files, and Go packages. Requires explicit requirements/spec input before launch, routes 4-14 reviewer passes through a detached deterministic harness, consolidates evidence-backed candidates, prepares verifier batches deterministically, verifies accepted findings, and posts approved inline comments for MR mode.",
-      "version": "0.5.2",
+      "version": "0.6.0",
       "author": {
         "name": "Daniil Matsiutsia"
       },

@@ -14,6 +14,7 @@ Adaptive multi-model code reviewer for [Claude Code](https://claude.com/claude-c
 - **Evidence-based consolidation + verification prep**: deterministic `ccr_consolidate.py` and `ccr_verify_prepare.py` attach corroboration, evidence bundles, anchor status, and prefilter decisions before verifier execution
 - **Verification stage** (Codex with Gemini fallback) filters speculative findings before anything is shown to the user
 - **Post-once guarantee** in MR mode: approved inline `DiffNote` comments now go through a deterministic posting helper with explicit approval artifacts, fingerprint-based idempotency, and structured posting results including publish status counts plus persona/severity breakdowns
+- **Repo-local eval runner**: deterministic routing/consolidation/verification-prep/posting fixture suites under `evals/ccr/` plus `quality/scripts/ccr_eval.py` / `scripts/evals.sh` for offline regression checks
 
 ## Requirements
 
@@ -92,13 +93,26 @@ Before larger refactors, run the deterministic local safety harness:
 This runs:
 - `py_compile` on the CCR Python entrypoints
 - `python3 -m unittest discover -s tests -v`
-- smoke invocations for `ccr_run_init.py`, `ccr_routing.py`, `repomap.py`, `review_context.py`, `ccr_consolidate.py`, `ccr_verify_prepare.py`, the deterministic `ccr_run.py` harness in `--dry-run` mode, the detached `ccr_run.py --detach` + `ccr_watch.py` watch flow, and `ccr_post_comments.py --prepare-only`
+- smoke invocations for `ccr_run_init.py`, `ccr_routing.py`, `repomap.py`, `review_context.py`, `ccr_consolidate.py`, `ccr_verify_prepare.py`, the deterministic `ccr_run.py` harness in `--dry-run` mode, the detached `ccr_run.py --detach` + `ccr_watch.py` watch flow, `ccr_post_comments.py` prepare/apply flows with a fake `glab`, and a small local eval-runner invocation
 - validation that `ccr_run.py` writes a live `status.json`, append-only `trace.jsonl`, final `run_summary.json`, a run-scoped `watch_cursor.json`, and a background-launch `run_launch` payload
 
 You can also run the unit tests directly:
 
 ```bash
 python3 -m unittest discover -s tests -v
+```
+
+And run the repo-local eval suites:
+
+```bash
+./scripts/evals.sh --suite all
+```
+
+Useful narrower invocations:
+
+```bash
+./scripts/evals.sh --suite routing
+./scripts/evals.sh --suite posting --case mixed_outcomes
 ```
 
 Optional dogfooding signal:
@@ -134,6 +148,7 @@ ccr-plugin/
 │       ├── ccr_consolidate.py      # deterministic candidate consolidation with corroboration + dedupe rules
 │       ├── ccr_verify_prepare.py   # deterministic verification prep with anchors, prefilters, and batch writing
 │       ├── ccr_post_comments.py    # deterministic MR posting helper with approval, idempotency, and result manifests
+│       ├── ccr_eval.py             # deterministic local eval runner for routing/consolidation/verification-prep/posting suites
 │       ├── ccr_routing.py          # adaptive fanout planner (4-14 passes)
 │       ├── repomap.py              # lightweight focused repo map helper for review_context.py
 │       └── llm-proxy/
@@ -161,7 +176,10 @@ ccr-plugin/
 │           └── schemas/
 │               ├── code_review_response.schema.json              # reviewer output
 │               └── code_review_verification_response.schema.json # verifier output
+├── evals/
+│   └── ccr/                        # repo-local deterministic eval fixtures + result directories
 ├── scripts/
+│   ├── evals.sh                    # convenience wrapper around quality/scripts/ccr_eval.py
 │   └── smoke.sh                    # deterministic local safety harness
 ├── tests/
 │   ├── fixtures/                   # golden fixtures for routing/context smoke cases
@@ -188,7 +206,7 @@ See `quality/agents/ccr.md` for the full workflow specification.
 
 ## Status
 
-Phase 3 is complete: CCR has an isolated run-workspace initializer (`ccr_run_init.py`), a deterministic orchestration harness (`ccr_run.py`) with synchronous and detached execution modes, live observability artifacts (`status.json`, `trace.jsonl`, `run_summary.json`, `watch_cursor.json`), a compact watcher (`ccr_watch.py`) with quiet/follow modes, a deterministic MR posting helper (`ccr_post_comments.py`), and deterministic evidence-based middle-lane helpers (`ccr_consolidate.py`, `ccr_verify_prepare.py`) that add corroboration metadata, evidence bundles, anchor status, deterministic prefilters, structured verification-prep artifacts, and richer verified findings. Versioned contract schemas live under `quality/contracts/v1/`, stdlib unit tests under `tests/`, golden fixtures cover routing/context behavior, and the deterministic local smoke harness lives at `./scripts/smoke.sh`.
+Phase 4 (non-CI scope) is complete in `v0.6.0`: CCR now has an isolated run-workspace initializer (`ccr_run_init.py`), a deterministic orchestration harness (`ccr_run.py`) with synchronous and detached execution modes, live observability artifacts (`status.json`, `trace.jsonl`, `run_summary.json`, `watch_cursor.json`, `run_metrics.json`), a compact watcher (`ccr_watch.py`) with quiet/follow modes, normalized reviewer/verifier telemetry, a deterministic MR posting helper (`ccr_post_comments.py`) with structured publish metrics, deterministic evidence-based middle-lane helpers (`ccr_consolidate.py`, `ccr_verify_prepare.py`), and a repo-local eval substrate (`evals/ccr/`, `ccr_eval.py`, `scripts/evals.sh`) for offline regression checks. Versioned contract schemas live under `quality/contracts/v1/`, stdlib unit tests under `tests/`, and the deterministic local smoke harness lives at `./scripts/smoke.sh`.
 
 ## License
 
