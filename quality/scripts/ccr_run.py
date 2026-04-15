@@ -12,10 +12,10 @@ Runs CCR end-to-end for local scopes, artifact replays, and GitLab merge request
 - writes verified findings + final report artifacts
 
 Examples:
-    python3 ccr_run.py uncommitted --dry-run
-    python3 ccr_run.py package:internal/service --project-dir ~/src/my-repo --dry-run
-    python3 ccr_run.py https://gitlab.com/group/project/-/merge_requests/1234 --detach
-    python3 ccr_run.py --artifact-file /tmp/review_artifact.txt --project-dir ~/src/my-repo --dry-run
+    python3 ccr_run.py uncommitted --requirements-text "Expected behavior..." --dry-run
+    python3 ccr_run.py package:internal/service --project-dir ~/src/my-repo --requirements-text "Expected behavior..." --dry-run
+    python3 ccr_run.py https://gitlab.com/group/project/-/merge_requests/1234 --use-mr-description-as-requirements --detach
+    python3 ccr_run.py --artifact-file /tmp/review_artifact.txt --project-dir ~/src/my-repo --requirements-file /tmp/spec.txt --dry-run
 """
 from __future__ import annotations
 
@@ -1059,6 +1059,41 @@ def _run_command(
     )
 
 
+def _validate_requirements_input(target: ReviewTarget, args: argparse.Namespace) -> None:
+    selected_sources: list[str] = []
+    if args.requirements_text is not None:
+        selected_sources.append("--requirements-text")
+    if args.requirements_file:
+        selected_sources.append("--requirements-file")
+    if args.requirements_stdin:
+        selected_sources.append("--requirements-stdin")
+    if args.use_mr_description_as_requirements:
+        selected_sources.append("--use-mr-description-as-requirements")
+
+    if not selected_sources:
+        raise ValueError(
+            "CCR requires non-empty requirements/spec input before launch. "
+            "Pass exactly one of --requirements-text, --requirements-file, --requirements-stdin, "
+            "or --use-mr-description-as-requirements (MR targets only)."
+        )
+    if len(selected_sources) > 1:
+        raise ValueError(
+            "use exactly one requirements source: --requirements-text, --requirements-file, "
+            "--requirements-stdin, or --use-mr-description-as-requirements"
+        )
+    if args.requirements_text is not None and not str(args.requirements_text).strip():
+        raise ValueError("--requirements-text cannot be empty")
+    if args.requirements_file:
+        req_path = Path(args.requirements_file).expanduser().resolve()
+        if not req_path.is_file():
+            raise ValueError(f"requirements file does not exist: {req_path}")
+        if not _read_text(req_path).strip():
+            raise ValueError(f"requirements file is empty: {req_path}")
+    if args.use_mr_description_as_requirements and target.mode != "mr":
+        raise ValueError("--use-mr-description-as-requirements is only valid for MR targets")
+
+
+
 def _materialize_requirements(
     manifest: dict[str, Any],
     *,
@@ -1071,13 +1106,21 @@ def _materialize_requirements(
     text = ""
     chosen_sources = sum(
         1
-        for enabled in (bool(requirements_text), bool(requirements_file), bool(requirements_stdin))
+        for enabled in (
+            requirements_text is not None,
+            bool(requirements_file),
+            bool(requirements_stdin),
+            bool(use_mr_description),
+        )
         if enabled
     )
-    if chosen_sources > 1:
-        raise ValueError("use only one of --requirements-text, --requirements-file, or --requirements-stdin")
+    if chosen_sources != 1:
+        raise ValueError(
+            "CCR requires exactly one requirements source: --requirements-text, --requirements-file, "
+            "--requirements-stdin, or --use-mr-description-as-requirements"
+        )
 
-    if requirements_text:
+    if requirements_text is not None:
         text = requirements_text.strip()
     elif requirements_file:
         req_path = Path(requirements_file).expanduser().resolve()
@@ -1089,9 +1132,13 @@ def _materialize_requirements(
     elif use_mr_description:
         text = str((mr_metadata or {}).get("description") or "").strip()
 
+    if not text:
+        if use_mr_description:
+            raise ValueError("MR description is empty; provide explicit requirements/spec text before launching CCR")
+        raise ValueError("requirements/spec text is empty; provide non-empty requirements before launching CCR")
+
     requirements_path = Path(manifest["requirements_file"])
-    if text:
-        _write_text(requirements_path, text + "\n")
+    _write_text(requirements_path, text + "\n")
     return text
 
 
@@ -1939,10 +1986,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  %(prog)s uncommitted --dry-run\n"
-            "  %(prog)s package:internal/auth --project-dir tests/fixtures/go_repo --dry-run\n"
-            "  %(prog)s https://gitlab.com/group/project/-/merge_requests/1234\n"
-            "  %(prog)s --artifact-file /tmp/review_artifact.txt --project-dir ~/src/repo --dry-run\n"
+            "  %(prog)s uncommitted --requirements-text \"Expected behavior...\" --dry-run\n"
+            "  %(prog)s package:internal/auth --project-dir tests/fixtures/go_repo --requirements-text \"Expected behavior...\" --dry-run\n"
+            "  %(prog)s https://gitlab.com/group/project/-/merge_requests/1234 --use-mr-description-as-requirements\n"
+            "  %(prog)s --artifact-file /tmp/review_artifact.txt --project-dir ~/src/repo --requirements-file /tmp/spec.txt --dry-run\n"
         ),
     )
     parser.add_argument(
@@ -1963,22 +2010,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--requirements-text",
         default=None,
-        help="Inline requirements/spec text to inject into reviewer prompts.",
+        help="Inline non-empty requirements/spec text to inject into reviewer prompts. CCR refuses to launch without requirements.",
     )
     parser.add_argument(
         "--requirements-file",
         default=None,
-        help="Path to requirements/spec text to inject into reviewer prompts.",
+        help="Path to non-empty requirements/spec text to inject into reviewer prompts.",
     )
     parser.add_argument(
         "--requirements-stdin",
         action="store_true",
-        help="Read requirements/spec text from stdin and persist it into the run workspace.",
+        help="Read non-empty requirements/spec text from stdin and persist it into the run workspace.",
     )
     parser.add_argument(
         "--use-mr-description-as-requirements",
         action="store_true",
-        help="For MR mode, use the MR description as requirements/spec text.",
+        help="For MR mode, use the MR description as requirements/spec text. The MR description must be non-empty.",
     )
     parser.add_argument(
         "--user-requested-exhaustive",
@@ -2077,6 +2124,7 @@ def _build_detached_child_args(
 def launch_ccr_detached(args: argparse.Namespace, raw_args: list[str]) -> dict[str, Any]:
     detection_cwd = Path(args.project_dir).expanduser().resolve() if args.project_dir else None
     target = detect_review_target(args.target, artifact_file=args.artifact_file, cwd=detection_cwd)
+    _validate_requirements_input(target, args)
     project_dir = _resolve_project_dir(target, args.project_dir)
 
     run_id = args.run_id or _build_run_id()
@@ -2089,6 +2137,8 @@ def launch_ccr_detached(args: argparse.Namespace, raw_args: list[str]) -> dict[s
     requirements_file_override: str | None = None
     if args.requirements_stdin:
         requirements_text = sys.stdin.read()
+        if not requirements_text.strip():
+            raise ValueError("requirements/spec text from stdin is empty; provide non-empty requirements before launching CCR")
         _write_text(Path(manifest["requirements_file"]), requirements_text)
         requirements_file_override = manifest["requirements_file"]
 
@@ -2148,6 +2198,7 @@ def launch_ccr_detached(args: argparse.Namespace, raw_args: list[str]) -> dict[s
 def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
     detection_cwd = Path(args.project_dir).expanduser().resolve() if args.project_dir else None
     target = detect_review_target(args.target, artifact_file=args.artifact_file, cwd=detection_cwd)
+    _validate_requirements_input(target, args)
     project_dir = _resolve_project_dir(target, args.project_dir)
 
     manifest = _prepare_run_manifest(
@@ -2234,14 +2285,13 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             use_mr_description=args.use_mr_description_as_requirements,
             mr_metadata=mr_metadata,
         )
-        requirements_source = "none"
-        if args.requirements_text:
+        if args.requirements_text is not None:
             requirements_source = "inline"
         elif args.requirements_file:
             requirements_source = "file"
         elif args.requirements_stdin:
             requirements_source = "stdin"
-        elif args.use_mr_description_as_requirements:
+        else:
             requirements_source = "mr_description"
         observer.complete_stage(
             current_stage,

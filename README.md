@@ -71,13 +71,15 @@ Or explicitly spawn the agent via `Task(quality:ccr, "...")` — the plugin regi
 CCR walks the user through:
 1. Initializing an isolated per-run workspace under `/tmp/ccr/<run_id>/`
 2. Fetching the MR / preparing the local artifact
-3. Gathering requirements (optional)
+3. Gathering non-empty requirements/spec input before launch
 4. Adaptive routing (prints the review plan)
 5. Running reviewer passes in parallel
 6. Evidence-based candidate consolidation + verification preparation
 7. Consolidating verifier outcomes into numbered findings
 8. Printing a numbered report
 9. In MR mode: asking which findings to publish, materializing `posting_approval.json`, and posting through the deterministic `ccr_post_comments.py` helper
+
+`ccr_run.py` now refuses to launch without explicit non-empty requirements/spec input. For MR runs, `--use-mr-description-as-requirements` is allowed only when the MR description is non-empty.
 
 ## Local safety checks
 

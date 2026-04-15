@@ -40,6 +40,100 @@ class TestCCRRun(unittest.TestCase):
         self.assertEqual(payload["highest_risk_personas"], ["security"])
         self.assertEqual(payload["critical_surfaces"], ["auth"])
 
+    def test_cli_requires_explicit_requirements_before_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(self.script),
+                    "package:internal/auth",
+                    "--project-dir",
+                    str(self.fixture_repo),
+                    "--dry-run",
+                    "--base-dir",
+                    tmp,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            error_payload = json.loads(result.stderr)
+            self.assertIn("requires non-empty requirements/spec input before launch", error_payload["error"])
+            self.assertEqual(result.stdout.strip(), "")
+
+    def test_detach_requires_explicit_requirements_before_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(self.script),
+                    "package:internal/auth",
+                    "--project-dir",
+                    str(self.fixture_repo),
+                    "--dry-run",
+                    "--base-dir",
+                    tmp,
+                    "--detach",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            error_payload = json.loads(result.stderr)
+            self.assertIn("requires non-empty requirements/spec input before launch", error_payload["error"])
+            self.assertEqual(result.stdout.strip(), "")
+
+    def test_cli_rejects_empty_requirements_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(self.script),
+                    "package:internal/auth",
+                    "--project-dir",
+                    str(self.fixture_repo),
+                    "--requirements-text",
+                    "   ",
+                    "--dry-run",
+                    "--base-dir",
+                    tmp,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            error_payload = json.loads(result.stderr)
+            self.assertIn("--requirements-text cannot be empty", error_payload["error"])
+
+    def test_use_mr_description_requires_mr_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(self.script),
+                    "package:internal/auth",
+                    "--project-dir",
+                    str(self.fixture_repo),
+                    "--use-mr-description-as-requirements",
+                    "--dry-run",
+                    "--base-dir",
+                    tmp,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            error_payload = json.loads(result.stderr)
+            self.assertIn("only valid for MR targets", error_payload["error"])
+
     def test_dry_run_end_to_end_writes_expected_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = subprocess.run(
@@ -49,6 +143,8 @@ class TestCCRRun(unittest.TestCase):
                     "package:internal/auth",
                     "--project-dir",
                     str(self.fixture_repo),
+                    "--requirements-text",
+                    "ValidateToken must reject malformed input and preserve auth invariants.",
                     "--dry-run",
                     "--base-dir",
                     tmp,
@@ -94,11 +190,13 @@ class TestCCRRun(unittest.TestCase):
             trace_lines = [json.loads(line) for line in Path(manifest["trace_file"]).read_text(encoding="utf-8").splitlines() if line.strip()]
             trace_events = {entry["event"] for entry in trace_lines}
 
-            self.assertEqual(route_input["triggered_personas"], ["security"])
+            self.assertEqual(route_input["triggered_personas"], ["security", "requirements"])
+            self.assertEqual(route_input["highest_risk_personas"], ["security", "requirements"])
+            self.assertTrue(route_input["has_requirements"])
             self.assertTrue(route_plan["full_matrix"])
-            self.assertEqual(route_plan["total_passes"], 12)
-            self.assertEqual(reviewers["summary"]["planned_passes"], 12)
-            self.assertEqual(reviewers["summary"]["worker_count"], 12)
+            self.assertEqual(route_plan["total_passes"], 14)
+            self.assertEqual(reviewers["summary"]["planned_passes"], 14)
+            self.assertEqual(reviewers["summary"]["worker_count"], 14)
             self.assertEqual(reviewers["summary"]["failed_passes"], 0)
             self.assertEqual(verification_prepare["contract_version"], "ccr.verification_prepare.v1")
             self.assertEqual(verification_prepare["summary"]["candidate_count"], 0)
@@ -110,9 +208,9 @@ class TestCCRRun(unittest.TestCase):
             self.assertGreaterEqual(status["revision"], 1)
             self.assertGreaterEqual(status["event_seq"], 1)
             self.assertEqual(status["summary"]["verified_finding_count"], 0)
-            self.assertEqual(status["reviewers"]["planned"], 12)
-            self.assertEqual(status["reviewers"]["workers"], 12)
-            self.assertEqual(status["reviewers"]["completed"], 12)
+            self.assertEqual(status["reviewers"]["planned"], 14)
+            self.assertEqual(status["reviewers"]["workers"], 14)
+            self.assertEqual(status["reviewers"]["completed"], 14)
             self.assertEqual(status["verification"]["planned_batches"], 0)
             self.assertEqual(written_summary["run_id"], summary["run_id"])
             self.assertEqual(written_summary["duration_ms"], summary["duration_ms"])
@@ -359,6 +457,8 @@ class TestCCRRun(unittest.TestCase):
                     "package:internal/auth",
                     "--project-dir",
                     str(self.fixture_repo),
+                    "--requirements-text",
+                    "ValidateToken must reject malformed input and preserve auth invariants.",
                     "--dry-run",
                     "--base-dir",
                     tmp,

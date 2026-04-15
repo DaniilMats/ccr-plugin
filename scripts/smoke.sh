@@ -237,10 +237,27 @@ assert written_payload["ready_candidates"][0]["anchor_status"] == "file_context"
 assert Path(written_payload["batches"][0]["batch_file"]).is_file()
 PY
 
+echo "[smoke] requirements gating"
+if python3 quality/scripts/ccr_run.py \
+  package:internal/auth \
+  --project-dir tests/fixtures/go_repo \
+  --dry-run \
+  --base-dir "$TMP_DIR/phase1-missing" > "$TMP_DIR/ccr_run_missing.stdout.json" 2> "$TMP_DIR/ccr_run_missing.stderr.json"; then
+  echo "expected ccr_run.py to reject missing requirements" >&2
+  exit 1
+fi
+python3 - <<'PY' "$TMP_DIR/ccr_run_missing.stderr.json"
+import json, sys
+from pathlib import Path
+payload = json.loads(Path(sys.argv[1]).read_text())
+assert "requires non-empty requirements/spec input before launch" in payload["error"]
+PY
+
 echo "[smoke] deterministic harness"
 python3 quality/scripts/ccr_run.py \
   package:internal/auth \
   --project-dir tests/fixtures/go_repo \
+  --requirements-text "ValidateToken must reject malformed input and preserve auth invariants." \
   --dry-run \
   --base-dir "$TMP_DIR/phase1" > "$TMP_DIR/ccr_run_summary.json"
 
@@ -262,6 +279,7 @@ echo "[smoke] detached harness + watch"
 python3 quality/scripts/ccr_run.py \
   package:internal/auth \
   --project-dir tests/fixtures/go_repo \
+  --requirements-text "ValidateToken must reject malformed input and preserve auth invariants." \
   --dry-run \
   --base-dir "$TMP_DIR/phase12" \
   --detach > "$TMP_DIR/ccr_run_launch.json"
