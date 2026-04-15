@@ -20,6 +20,7 @@ Suggested release target after the Phase 4 non-CI work: **`v0.6.0`**.
 As of 2026-04-15:
 - Step 1 is complete: added `llm_invocation`, `reviewers_manifest`, and `run_metrics` schemas plus `run_metrics_file` in run artifacts.
 - Step 2 is complete: `code_review.py` and `code_review_verify.py` now persist normalized `llm_invocation` telemetry, including schema-retry visibility, in structured outputs.
+- Step 3 is complete: `ccr_run.py` now threads reviewer/verifier telemetry into `reviewers.json`, `status.json`, `trace.jsonl`, `verified_findings.json` batch metadata, and richer `run_metrics.json` provider/schema aggregates.
 
 ---
 
@@ -464,6 +465,6 @@ Phase 4 (non-CI) is complete when:
 
 ## Recommended immediate next move
 
-Proceed to **Step 3 — harness aggregation and run metrics**.
+Proceed to **Step 4 — posting metrics and post-run observability**.
 
-That carries the newly persisted reviewer/verifier telemetry through `quality/scripts/ccr_run.py`, enriches status/trace payloads, and makes `run_metrics.json` reflect provider/schema behavior instead of only coarse counters.
+That closes the current observability gap after review completion by making approval and publish outcomes measurable in structured artifacts instead of only human-readable logs.

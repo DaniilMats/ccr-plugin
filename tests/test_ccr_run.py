@@ -200,13 +200,30 @@ class TestCCRRun(unittest.TestCase):
             self.assertEqual(reviewers["summary"]["planned_passes"], 14)
             self.assertEqual(reviewers["summary"]["worker_count"], 14)
             self.assertEqual(reviewers["summary"]["failed_passes"], 0)
+            self.assertEqual(reviewers["summary"]["llm_call_count"], 14)
+            self.assertEqual(reviewers["summary"]["total_tokens"], 0)
+            self.assertEqual(reviewers["summary"]["schema_retry_count"], 0)
+            self.assertEqual(reviewers["summary"]["provider_breakdown"]["gemini"]["call_count"], 5)
+            self.assertEqual(reviewers["summary"]["provider_breakdown"]["codex"]["call_count"], 5)
+            self.assertEqual(reviewers["summary"]["provider_breakdown"]["claude"]["call_count"], 4)
+            self.assertTrue(all("llm_invocation" in item for item in reviewers["passes"]))
+            self.assertEqual(reviewers["passes"][0]["llm_invocation"]["tokens"], 0)
             self.assertEqual(verification_prepare["contract_version"], "ccr.verification_prepare.v1")
             self.assertEqual(verification_prepare["summary"]["candidate_count"], 0)
             self.assertEqual(run_metrics["contract_version"], "ccr.run_metrics.v1")
             self.assertEqual(run_metrics["requirements"]["source"], "inline")
             self.assertEqual(run_metrics["route"]["total_passes"], 14)
             self.assertEqual(run_metrics["reviewers"]["planned_passes"], 14)
+            self.assertEqual(run_metrics["reviewers"]["llm_call_count"], 14)
+            self.assertEqual(run_metrics["reviewers"]["provider_breakdown"]["gemini"]["call_count"], 5)
+            self.assertEqual(run_metrics["candidates"]["duplicate_merge_count"], 0)
+            self.assertEqual(run_metrics["candidates"]["duplicate_merge_rate"], None)
             self.assertEqual(run_metrics["verification"]["ready_count"], 0)
+            self.assertEqual(run_metrics["verification"]["anchor_failure_count"], 0)
+            self.assertEqual(run_metrics["verification"]["llm_call_count"], 0)
+            self.assertEqual(run_metrics["llm"]["total_calls"], 14)
+            self.assertEqual(run_metrics["llm"]["reviewer_calls"], 14)
+            self.assertEqual(run_metrics["llm"]["verifier_calls"], 0)
             self.assertFalse(run_metrics["posting"]["posting_supported"])
             self.assertEqual(verification_prepare["summary"]["ready_count"], 0)
             self.assertEqual(verification_prepare["summary"]["dropped_count"], 0)
@@ -219,10 +236,18 @@ class TestCCRRun(unittest.TestCase):
             self.assertEqual(status["reviewers"]["planned"], 14)
             self.assertEqual(status["reviewers"]["workers"], 14)
             self.assertEqual(status["reviewers"]["completed"], 14)
+            self.assertEqual(status["reviewers"]["passes"]["logic_p1"]["llm_invocation"]["provider"], "gemini")
+            self.assertEqual(status["reviewers"]["passes"]["logic_p1"]["schema_retries"], 0)
+            self.assertEqual(status["stages"]["candidates"]["duplicate_merge_count"], 0)
+            self.assertEqual(status["stages"]["verification"]["anchor_failure_count"], 0)
             self.assertEqual(status["verification"]["planned_batches"], 0)
             self.assertEqual(written_summary["run_id"], summary["run_id"])
             self.assertEqual(written_summary["duration_ms"], summary["duration_ms"])
             self.assertTrue({"run_initialized", "route_plan_ready", "reviewers_started", "run_completed"}.issubset(trace_events))
+            reviewer_events = [entry for entry in trace_lines if entry["event"] == "reviewer_completed"]
+            self.assertTrue(reviewer_events)
+            self.assertEqual(reviewer_events[0]["data"]["llm_invocation"]["tokens"], 0)
+            self.assertEqual(reviewer_events[0]["data"]["llm_invocation"]["schema_retries"], 0)
             self.assertEqual(summary["verification_prepare_file"], manifest["verification_prepare_file"])
             self.assertEqual(summary["run_metrics_file"], manifest["run_metrics_file"])
             self.assertEqual(summary["posting_approval_file"], manifest["posting_approval_file"])
@@ -457,6 +482,121 @@ class TestCCRRun(unittest.TestCase):
             self.assertEqual(written["error"], "go.mod not found")
             self.assertIn("go.mod not found", log_text)
 
+    def test_write_run_metrics_aggregates_stage_level_llm_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = self.module._build_manifest(Path(tmp), "test-run-metrics")
+            target = self.module.ReviewTarget(
+                mode="local",
+                raw_target="package:internal/auth",
+                display_target="package:internal/auth",
+                scope="package:internal/auth",
+            )
+            payload = self.module._write_run_metrics(
+                manifest,
+                target=target,
+                route_input={
+                    "triggered_personas": ["security"],
+                    "highest_risk_personas": ["security"],
+                    "critical_surfaces": ["auth"],
+                    "changed_file_count": 2,
+                    "changed_lines": 52,
+                },
+                route_plan={
+                    "summary": "Review plan: high-risk MR → Logic x3, Security x3",
+                    "total_passes": 14,
+                    "full_matrix": True,
+                    "pass_counts": {"logic": 3, "security": 3},
+                },
+                requirements_source="inline",
+                requirements_text="ValidateToken must reject malformed input.",
+                reviewers_summary={
+                    "planned_passes": 14,
+                    "worker_count": 14,
+                    "timeout_sec": 600,
+                    "estimated_max_duration_sec": 600,
+                    "completed_passes": 14,
+                    "succeeded_passes": 13,
+                    "failed_passes": 1,
+                    "total_findings": 3,
+                    "llm_call_count": 14,
+                    "total_tokens": 4200,
+                    "llm_total_duration_ms": 120000,
+                    "schema_retry_count": 2,
+                    "schema_retry_rate": 0.1429,
+                    "schema_violation_count": 1,
+                    "timed_out_calls": 0,
+                    "failed_calls": 1,
+                    "provider_breakdown": {
+                        "codex": {
+                            "call_count": 5,
+                            "total_tokens": 1500,
+                            "total_duration_ms": 40000,
+                            "schema_retry_count": 1,
+                            "schema_violation_count": 1,
+                            "timed_out_calls": 0,
+                            "failed_calls": 1,
+                        }
+                    },
+                },
+                candidates_summary={
+                    "candidate_count": 2,
+                    "source_finding_count": 3,
+                    "skipped_invalid_finding_count": 0,
+                },
+                verification_summary={
+                    "candidate_count": 2,
+                    "ready_count": 2,
+                    "dropped_count": 0,
+                    "anchor_failure_count": 1,
+                    "anchor_failure_rate": 0.5,
+                    "drop_reason_counts": {"missing_anchor": 1},
+                    "confirmed_count": 1,
+                    "uncertain_count": 0,
+                    "rejected_count": 1,
+                    "rejection_rate": 0.5,
+                    "verified_count": 1,
+                    "batch_count": 1,
+                    "successful_batches": 1,
+                    "failed_batches": 0,
+                    "worker_count": 1,
+                    "timeout_sec": 300,
+                    "estimated_max_duration_sec": 300,
+                    "llm_call_count": 2,
+                    "total_tokens": 300,
+                    "llm_total_duration_ms": 900,
+                    "schema_retry_count": 1,
+                    "schema_retry_rate": 0.5,
+                    "schema_violation_count": 0,
+                    "timed_out_calls": 0,
+                    "failed_calls": 0,
+                    "provider_breakdown": {
+                        "gemini": {
+                            "call_count": 2,
+                            "total_tokens": 300,
+                            "total_duration_ms": 900,
+                            "schema_retry_count": 1,
+                            "schema_violation_count": 0,
+                            "timed_out_calls": 0,
+                            "failed_calls": 0,
+                        }
+                    },
+                },
+            )
+
+            self.assertEqual(payload["reviewers"]["availability_rate"], 0.9286)
+            self.assertEqual(payload["candidates"]["duplicate_merge_count"], 1)
+            self.assertEqual(payload["candidates"]["duplicate_merge_rate"], 0.3333)
+            self.assertEqual(payload["verification"]["rejection_rate"], 0.5)
+            self.assertEqual(payload["llm"]["total_calls"], 16)
+            self.assertEqual(payload["llm"]["reviewer_calls"], 14)
+            self.assertEqual(payload["llm"]["verifier_calls"], 2)
+            self.assertEqual(payload["llm"]["provider_breakdown"]["codex"]["call_count"], 5)
+            self.assertEqual(payload["llm"]["provider_breakdown"]["gemini"]["call_count"], 2)
+
+            written = json.loads(Path(manifest["run_metrics_file"]).read_text(encoding="utf-8"))
+            self.assertEqual(written["llm"]["total_tokens"], 4500)
+            self.assertEqual(written["verification"]["anchor_failure_count"], 1)
+
     def test_detach_launch_and_watch_flow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             launch_result = subprocess.run(
@@ -570,6 +710,7 @@ class TestCCRRun(unittest.TestCase):
             status = json.loads(Path(launch["status_file"]).read_text(encoding="utf-8"))
             self.assertEqual(summary["contract_version"], "ccr.run_summary.v1")
             self.assertEqual(run_metrics["contract_version"], "ccr.run_metrics.v1")
+            self.assertEqual(run_metrics["llm"]["total_calls"], 14)
             self.assertEqual(summary["run_id"], launch["run_id"])
             self.assertTrue(summary["detached"])
             self.assertEqual(status["state"], "completed")

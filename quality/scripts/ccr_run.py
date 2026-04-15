@@ -606,6 +606,13 @@ class RunObserver:
 
     def reviewer_finished(self, result: dict[str, Any]) -> None:
         pass_name = result["pass_name"]
+        llm_invocation = _normalize_llm_invocation(
+            result.get("llm_invocation"),
+            provider=result.get("provider"),
+            duration_ms=result.get("duration_ms"),
+            exit_code=result.get("exit_code"),
+            timed_out=result.get("timed_out"),
+        )
         with self._lock:
             reviewers = self._status["reviewers"]
             pass_status = reviewers["passes"].setdefault(pass_name, {})
@@ -624,6 +631,12 @@ class RunObserver:
                     "duration_ms": result.get("duration_ms"),
                     "output_file": result.get("output_file"),
                     "stderr_file": result.get("stderr_file"),
+                    "llm_invocation": llm_invocation,
+                    "tokens": llm_invocation.get("tokens"),
+                    "thread_id": llm_invocation.get("thread_id"),
+                    "schema_valid": llm_invocation.get("schema_valid"),
+                    "schema_retries": llm_invocation.get("schema_retries"),
+                    "schema_violations": llm_invocation.get("schema_violations"),
                 }
             )
             reviewers["running"] = max(0, reviewers.get("running", 0) - 1)
@@ -649,6 +662,7 @@ class RunObserver:
             finding_count=result["finding_count"],
             status=result["status"],
             duration_ms=result.get("duration_ms"),
+            **_invocation_event_fields(llm_invocation),
         )
 
     def configure_verification(
@@ -709,11 +723,31 @@ class RunObserver:
 
     def verification_batch_finished(self, result: dict[str, Any]) -> None:
         batch_id = result["batch_id"]
+        llm_invocation = _normalize_llm_invocation(
+            result.get("llm_invocation"),
+            provider=result.get("provider"),
+            duration_ms=result.get("duration_ms"),
+            exit_code=result.get("exit_code"),
+            timed_out=result.get("timed_out"),
+        )
         with self._lock:
             verification = self._status["verification"]
             batch_status = verification["batches"].setdefault(batch_id, {})
             payload = result.get("result") if isinstance(result.get("result"), dict) else {}
             verified_findings = payload.get("verified_findings") if isinstance(payload.get("verified_findings"), list) else []
+            confirmed_count = 0
+            uncertain_count = 0
+            rejected_count = 0
+            for finding in verified_findings:
+                if not isinstance(finding, dict):
+                    continue
+                verdict = str(finding.get("verdict") or "")
+                if verdict == "confirmed":
+                    confirmed_count += 1
+                elif verdict == "uncertain":
+                    uncertain_count += 1
+                elif verdict == "rejected":
+                    rejected_count += 1
             batch_status.update(
                 {
                     "status": result["status"],
@@ -726,8 +760,18 @@ class RunObserver:
                     "output_file": result.get("output_file"),
                     "stderr_file": result.get("stderr_file"),
                     "attempted_providers": result.get("attempted_providers"),
+                    "candidate_count": result.get("candidate_count"),
                     "verified_findings": len(verified_findings),
+                    "confirmed_count": confirmed_count,
+                    "uncertain_count": uncertain_count,
+                    "rejected_count": rejected_count,
                     "timed_out": result.get("timed_out", False),
+                    "llm_invocation": llm_invocation,
+                    "tokens": llm_invocation.get("tokens"),
+                    "thread_id": llm_invocation.get("thread_id"),
+                    "schema_valid": llm_invocation.get("schema_valid"),
+                    "schema_retries": llm_invocation.get("schema_retries"),
+                    "schema_violations": llm_invocation.get("schema_violations"),
                 }
             )
             verification["running_batches"] = max(0, verification.get("running_batches", 0) - 1)
@@ -751,6 +795,11 @@ class RunObserver:
             provider=result["provider"],
             status=result["status"],
             duration_ms=result.get("duration_ms"),
+            candidate_count=result.get("candidate_count"),
+            confirmed_count=confirmed_count,
+            uncertain_count=uncertain_count,
+            rejected_count=rejected_count,
+            **_invocation_event_fields(llm_invocation),
         )
 
     def current_duration_ms(self) -> int:
@@ -1573,6 +1622,14 @@ def _run_reviewer_pass(
     summary = str(output_payload.get("summary") or "Reviewer did not produce structured output.")
     findings = output_payload.get("findings") if isinstance(output_payload.get("findings"), list) else []
     status = "succeeded" if exit_code == 0 else "failed"
+    llm_invocation = _normalize_llm_invocation(
+        output_payload.get("llm_invocation"),
+        provider=spec.provider,
+        duration_ms=duration_ms,
+        exit_code=exit_code,
+        timed_out=timed_out,
+        error=(stderr.strip() or summary) if exit_code != 0 or timed_out else None,
+    )
 
     return {
         "pass_name": spec.pass_name,
@@ -1589,6 +1646,7 @@ def _run_reviewer_pass(
         "stderr_file": str(stderr_path),
         "finding_count": len(findings),
         "summary": summary,
+        "llm_invocation": llm_invocation,
         "result": output_payload,
     }
 
@@ -1636,6 +1694,7 @@ def _run_reviewers(
             observer.reviewer_finished(result)
 
     results.sort(key=lambda item: passes.index(item["pass_name"]))
+    reviewer_llm_metrics = _aggregate_llm_metrics(_collect_llm_invocations(results))
     reviewers_summary = {
         "planned_passes": len(passes),
         "worker_count": worker_count,
@@ -1645,6 +1704,7 @@ def _run_reviewers(
         "succeeded_passes": sum(1 for item in results if item["status"] == "succeeded"),
         "failed_passes": sum(1 for item in results if item["status"] != "succeeded"),
         "total_findings": sum(item["finding_count"] for item in results),
+        **_llm_summary_fields(reviewer_llm_metrics),
     }
     reviewers_payload = {
         "contract_version": "ccr.reviewers_manifest.v1",
@@ -1694,6 +1754,306 @@ def _ratio(numerator: int, denominator: int) -> float | None:
 
 
 
+def _normalize_llm_invocation(
+    payload: Any,
+    *,
+    provider: str | None,
+    duration_ms: int | None = None,
+    exit_code: int | None = None,
+    timed_out: bool | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    data = payload if isinstance(payload, dict) else {}
+
+    normalized_provider = data.get("provider")
+    if not isinstance(normalized_provider, str) or not normalized_provider:
+        normalized_provider = provider
+
+    thread_id = data.get("thread_id")
+    if not isinstance(thread_id, str) or not thread_id:
+        thread_id = None
+
+    tokens = data.get("tokens")
+    if not isinstance(tokens, int) or tokens < 0:
+        tokens = 0
+
+    normalized_duration_ms = data.get("duration_ms")
+    if not isinstance(normalized_duration_ms, int) or normalized_duration_ms < 0:
+        normalized_duration_ms = max(0, int(duration_ms or 0))
+
+    normalized_exit_code = data.get("exit_code")
+    if not isinstance(normalized_exit_code, int):
+        normalized_exit_code = int(exit_code or 0)
+
+    normalized_error = data.get("error")
+    if normalized_error is not None:
+        normalized_error = str(normalized_error)
+    elif error:
+        normalized_error = str(error)
+
+    normalized_timed_out = data.get("timed_out")
+    if not isinstance(normalized_timed_out, bool):
+        normalized_timed_out = bool(timed_out)
+
+    schema_valid = data.get("schema_valid")
+    if not isinstance(schema_valid, bool):
+        schema_valid = normalized_exit_code == 0 and not normalized_timed_out
+
+    schema_retries = data.get("schema_retries")
+    if not isinstance(schema_retries, int) or schema_retries < 0:
+        schema_retries = 0
+
+    schema_violations = data.get("schema_violations")
+    if not isinstance(schema_violations, list):
+        schema_violations = []
+    else:
+        schema_violations = [str(item) for item in schema_violations]
+
+    return {
+        "provider": normalized_provider,
+        "thread_id": thread_id,
+        "tokens": tokens,
+        "duration_ms": normalized_duration_ms,
+        "exit_code": normalized_exit_code,
+        "error": normalized_error,
+        "timed_out": normalized_timed_out,
+        "schema_valid": schema_valid,
+        "schema_retries": schema_retries,
+        "schema_violations": schema_violations,
+    }
+
+
+
+def _invocation_event_fields(invocation: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(invocation, dict):
+        return {}
+    payload: dict[str, Any] = {"llm_invocation": invocation}
+    tokens = int(invocation.get("tokens") or 0)
+    if tokens > 0:
+        payload["tokens"] = tokens
+    schema_retries = int(invocation.get("schema_retries") or 0)
+    if schema_retries > 0:
+        payload["schema_retries"] = schema_retries
+    if invocation.get("schema_valid") is False:
+        payload["schema_valid"] = False
+    exit_code = int(invocation.get("exit_code") or 0)
+    if exit_code != 0:
+        payload["exit_code"] = exit_code
+    if invocation.get("timed_out") is True:
+        payload["timed_out"] = True
+    schema_violations = invocation.get("schema_violations") if isinstance(invocation.get("schema_violations"), list) else []
+    if schema_violations:
+        payload["schema_violation_count"] = len(schema_violations)
+        payload["schema_violations"] = schema_violations
+    return payload
+
+
+
+def _collect_llm_invocations(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    invocations: list[dict[str, Any]] = []
+    for item in results:
+        invocation = item.get("llm_invocation")
+        if isinstance(invocation, dict):
+            invocations.append(invocation)
+    return invocations
+
+
+
+def _empty_llm_metrics() -> dict[str, Any]:
+    return {
+        "call_count": 0,
+        "total_tokens": 0,
+        "total_duration_ms": 0,
+        "schema_retry_count": 0,
+        "schema_retry_rate": None,
+        "schema_violation_count": 0,
+        "timed_out_calls": 0,
+        "failed_calls": 0,
+        "provider_breakdown": {},
+    }
+
+
+
+def _aggregate_llm_metrics(invocations: list[dict[str, Any]]) -> dict[str, Any]:
+    if not invocations:
+        return _empty_llm_metrics()
+
+    totals = _empty_llm_metrics()
+    provider_breakdown: dict[str, dict[str, Any]] = {}
+    for invocation in invocations:
+        provider = str(invocation.get("provider") or "unknown")
+        tokens = max(0, int(invocation.get("tokens") or 0))
+        duration_ms = max(0, int(invocation.get("duration_ms") or 0))
+        schema_retries = max(0, int(invocation.get("schema_retries") or 0))
+        schema_violations = invocation.get("schema_violations") if isinstance(invocation.get("schema_violations"), list) else []
+        schema_violation_count = len(schema_violations)
+        exit_code = int(invocation.get("exit_code") or 0)
+        timed_out = bool(invocation.get("timed_out", False))
+        failed = exit_code != 0 or timed_out or bool(invocation.get("error"))
+
+        bucket = provider_breakdown.setdefault(
+            provider,
+            {
+                "call_count": 0,
+                "total_tokens": 0,
+                "total_duration_ms": 0,
+                "schema_retry_count": 0,
+                "schema_violation_count": 0,
+                "timed_out_calls": 0,
+                "failed_calls": 0,
+            },
+        )
+
+        totals["call_count"] += 1
+        totals["total_tokens"] += tokens
+        totals["total_duration_ms"] += duration_ms
+        totals["schema_retry_count"] += schema_retries
+        totals["schema_violation_count"] += schema_violation_count
+        if timed_out:
+            totals["timed_out_calls"] += 1
+        if failed:
+            totals["failed_calls"] += 1
+
+        bucket["call_count"] += 1
+        bucket["total_tokens"] += tokens
+        bucket["total_duration_ms"] += duration_ms
+        bucket["schema_retry_count"] += schema_retries
+        bucket["schema_violation_count"] += schema_violation_count
+        if timed_out:
+            bucket["timed_out_calls"] += 1
+        if failed:
+            bucket["failed_calls"] += 1
+
+    totals["schema_retry_rate"] = _ratio(totals["schema_retry_count"], totals["call_count"])
+    totals["provider_breakdown"] = {key: provider_breakdown[key] for key in sorted(provider_breakdown)}
+    return totals
+
+
+
+def _llm_summary_fields(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "llm_call_count": int(metrics.get("call_count") or 0),
+        "total_tokens": int(metrics.get("total_tokens") or 0),
+        "llm_total_duration_ms": int(metrics.get("total_duration_ms") or 0),
+        "schema_retry_count": int(metrics.get("schema_retry_count") or 0),
+        "schema_retry_rate": metrics.get("schema_retry_rate"),
+        "schema_violation_count": int(metrics.get("schema_violation_count") or 0),
+        "timed_out_calls": int(metrics.get("timed_out_calls") or 0),
+        "failed_calls": int(metrics.get("failed_calls") or 0),
+        "provider_breakdown": dict(metrics.get("provider_breakdown") or {}),
+    }
+
+
+
+def _llm_metrics_from_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    provider_breakdown = summary.get("provider_breakdown") if isinstance(summary.get("provider_breakdown"), dict) else {}
+    return {
+        "call_count": int(summary.get("llm_call_count") or 0),
+        "total_tokens": int(summary.get("total_tokens") or 0),
+        "total_duration_ms": int(summary.get("llm_total_duration_ms") or 0),
+        "schema_retry_count": int(summary.get("schema_retry_count") or 0),
+        "schema_retry_rate": summary.get("schema_retry_rate"),
+        "schema_violation_count": int(summary.get("schema_violation_count") or 0),
+        "timed_out_calls": int(summary.get("timed_out_calls") or 0),
+        "failed_calls": int(summary.get("failed_calls") or 0),
+        "provider_breakdown": dict(provider_breakdown),
+    }
+
+
+
+def _merge_llm_metrics(*metrics_items: dict[str, Any]) -> dict[str, Any]:
+    combined = _empty_llm_metrics()
+    provider_breakdown: dict[str, dict[str, Any]] = {}
+    for metrics in metrics_items:
+        if not isinstance(metrics, dict):
+            continue
+        combined["call_count"] += int(metrics.get("call_count") or 0)
+        combined["total_tokens"] += int(metrics.get("total_tokens") or 0)
+        combined["total_duration_ms"] += int(metrics.get("total_duration_ms") or 0)
+        combined["schema_retry_count"] += int(metrics.get("schema_retry_count") or 0)
+        combined["schema_violation_count"] += int(metrics.get("schema_violation_count") or 0)
+        combined["timed_out_calls"] += int(metrics.get("timed_out_calls") or 0)
+        combined["failed_calls"] += int(metrics.get("failed_calls") or 0)
+
+        nested = metrics.get("provider_breakdown") if isinstance(metrics.get("provider_breakdown"), dict) else {}
+        for provider, bucket in nested.items():
+            if not isinstance(bucket, dict):
+                continue
+            merged_bucket = provider_breakdown.setdefault(
+                provider,
+                {
+                    "call_count": 0,
+                    "total_tokens": 0,
+                    "total_duration_ms": 0,
+                    "schema_retry_count": 0,
+                    "schema_violation_count": 0,
+                    "timed_out_calls": 0,
+                    "failed_calls": 0,
+                },
+            )
+            merged_bucket["call_count"] += int(bucket.get("call_count") or 0)
+            merged_bucket["total_tokens"] += int(bucket.get("total_tokens") or 0)
+            merged_bucket["total_duration_ms"] += int(bucket.get("total_duration_ms") or 0)
+            merged_bucket["schema_retry_count"] += int(bucket.get("schema_retry_count") or 0)
+            merged_bucket["schema_violation_count"] += int(bucket.get("schema_violation_count") or 0)
+            merged_bucket["timed_out_calls"] += int(bucket.get("timed_out_calls") or 0)
+            merged_bucket["failed_calls"] += int(bucket.get("failed_calls") or 0)
+
+    combined["schema_retry_rate"] = _ratio(combined["schema_retry_count"], combined["call_count"])
+    combined["provider_breakdown"] = {key: provider_breakdown[key] for key in sorted(provider_breakdown)}
+    return combined
+
+
+
+def _verification_verdict_counts(results: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {
+        "confirmed_count": 0,
+        "uncertain_count": 0,
+        "rejected_count": 0,
+    }
+    for item in results:
+        payload = item.get("result") if isinstance(item.get("result"), dict) else {}
+        findings = payload.get("verified_findings") if isinstance(payload.get("verified_findings"), list) else []
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            verdict = str(finding.get("verdict") or "")
+            if verdict == "confirmed":
+                counts["confirmed_count"] += 1
+            elif verdict == "uncertain":
+                counts["uncertain_count"] += 1
+            elif verdict == "rejected":
+                counts["rejected_count"] += 1
+    return counts
+
+
+
+def _verification_prepare_metrics(payload: dict[str, Any]) -> dict[str, Any]:
+    ready_candidates = payload.get("ready_candidates") if isinstance(payload.get("ready_candidates"), list) else []
+    dropped_candidates = payload.get("dropped_candidates") if isinstance(payload.get("dropped_candidates"), list) else []
+    candidate_count = len(ready_candidates) + len(dropped_candidates)
+    anchor_failure_count = 0
+    drop_reason_counts: dict[str, int] = defaultdict(int)
+    for item in [*ready_candidates, *dropped_candidates]:
+        if not isinstance(item, dict):
+            continue
+        drop_reasons = [str(entry) for entry in (item.get("drop_reasons") or [])]
+        for reason in drop_reasons:
+            drop_reason_counts[reason] += 1
+        anchor_status = str(item.get("anchor_status") or "")
+        if anchor_status == "missing" or "missing_anchor" in drop_reasons:
+            anchor_failure_count += 1
+    return {
+        "candidate_count": candidate_count,
+        "ready_count": len(ready_candidates),
+        "dropped_count": len(dropped_candidates),
+        "anchor_failure_count": anchor_failure_count,
+        "anchor_failure_rate": _ratio(anchor_failure_count, candidate_count),
+        "drop_reason_counts": {key: drop_reason_counts[key] for key in sorted(drop_reason_counts)},
+    }
+
+
+
 def _write_run_metrics(
     manifest: dict[str, Any],
     *,
@@ -1706,10 +2066,13 @@ def _write_run_metrics(
     candidates_summary: dict[str, Any],
     verification_summary: dict[str, Any],
 ) -> dict[str, Any]:
-    verification_prepare_payload = _load_json_file(Path(manifest["verification_prepare_file"]), default={})
-    verification_prepare_summary = verification_prepare_payload.get("summary") if isinstance(verification_prepare_payload, dict) else {}
-    if not isinstance(verification_prepare_summary, dict):
-        verification_prepare_summary = {}
+    reviewer_llm_metrics = _llm_metrics_from_summary(reviewers_summary)
+    verification_llm_metrics = _llm_metrics_from_summary(verification_summary)
+    combined_llm_metrics = _merge_llm_metrics(reviewer_llm_metrics, verification_llm_metrics)
+
+    source_finding_count = int(candidates_summary.get("source_finding_count") or 0)
+    candidate_count = int(candidates_summary.get("candidate_count") or 0)
+    duplicate_merge_count = max(0, source_finding_count - candidate_count)
 
     payload = {
         "contract_version": "ccr.run_metrics.v1",
@@ -1740,12 +2103,24 @@ def _write_run_metrics(
                 int(reviewers_summary.get("planned_passes") or 0),
             ),
         },
-        "candidates": dict(candidates_summary),
-        "verification": {
-            "candidate_count": verification_prepare_summary.get("candidate_count"),
-            "ready_count": verification_prepare_summary.get("ready_count"),
-            "dropped_count": verification_prepare_summary.get("dropped_count"),
-            **verification_summary,
+        "candidates": {
+            **candidates_summary,
+            "duplicate_merge_count": duplicate_merge_count,
+            "duplicate_merge_rate": _ratio(duplicate_merge_count, source_finding_count),
+        },
+        "verification": dict(verification_summary),
+        "llm": {
+            "total_calls": int(combined_llm_metrics.get("call_count") or 0),
+            "reviewer_calls": int(reviewer_llm_metrics.get("call_count") or 0),
+            "verifier_calls": int(verification_llm_metrics.get("call_count") or 0),
+            "total_tokens": int(combined_llm_metrics.get("total_tokens") or 0),
+            "total_duration_ms": int(combined_llm_metrics.get("total_duration_ms") or 0),
+            "schema_retry_count": int(combined_llm_metrics.get("schema_retry_count") or 0),
+            "schema_retry_rate": combined_llm_metrics.get("schema_retry_rate"),
+            "schema_violation_count": int(combined_llm_metrics.get("schema_violation_count") or 0),
+            "timed_out_calls": int(combined_llm_metrics.get("timed_out_calls") or 0),
+            "failed_calls": int(combined_llm_metrics.get("failed_calls") or 0),
+            "provider_breakdown": dict(combined_llm_metrics.get("provider_breakdown") or {}),
         },
         "posting": {
             "posting_supported": target.mode == "mr",
@@ -1814,10 +2189,19 @@ def _run_single_verification_batch(
     payload = _load_json_file(output_path, default={})
     if not isinstance(payload, dict):
         payload = {}
+    llm_invocation = _normalize_llm_invocation(
+        payload.get("llm_invocation"),
+        provider=used_provider,
+        duration_ms=duration_ms,
+        exit_code=last_exit_code,
+        timed_out=timed_out,
+        error=(last_stderr.strip() or payload.get("summary")) if last_exit_code != 0 or timed_out else None,
+    )
 
     return {
         "batch_id": batch["batch_id"],
         "batch_file": str(batch_path),
+        "candidate_count": int(batch.get("candidate_count") or 0),
         "output_file": str(output_path),
         "stderr_file": str(stderr_path),
         "provider": used_provider,
@@ -1828,6 +2212,7 @@ def _run_single_verification_batch(
         "started_at": started_at,
         "finished_at": finished_at,
         "duration_ms": duration_ms,
+        "llm_invocation": llm_invocation,
         "result": payload,
     }
 
@@ -1942,6 +2327,8 @@ def _run_verification(
     prepared_candidates = prepared["prepared_candidates"]
     ready_candidates = prepared["ready_candidates"]
     batches = prepared["batches"]
+    prepare_payload = prepared.get("payload") if isinstance(prepared.get("payload"), dict) else {}
+    prepare_metrics = _verification_prepare_metrics(prepare_payload)
 
     candidates_payload = _load_json_file(Path(manifest["candidates_file"]), default={})
     if isinstance(candidates_payload, dict):
@@ -1950,6 +2337,16 @@ def _run_verification(
 
     if not ready_candidates:
         summary = {
+            "candidate_count": prepare_metrics["candidate_count"],
+            "ready_count": prepare_metrics["ready_count"],
+            "dropped_count": prepare_metrics["dropped_count"],
+            "anchor_failure_count": prepare_metrics["anchor_failure_count"],
+            "anchor_failure_rate": prepare_metrics["anchor_failure_rate"],
+            "drop_reason_counts": dict(prepare_metrics["drop_reason_counts"]),
+            "confirmed_count": 0,
+            "uncertain_count": 0,
+            "rejected_count": 0,
+            "rejection_rate": None,
             "verified_count": 0,
             "batch_count": 0,
             "successful_batches": 0,
@@ -1957,6 +2354,7 @@ def _run_verification(
             "worker_count": 0,
             "timeout_sec": verifier_timeout_sec,
             "estimated_max_duration_sec": 0,
+            **_llm_summary_fields(_empty_llm_metrics()),
         }
         payload = {
             "contract_version": "ccr.verified_findings.v1",
@@ -1997,7 +2395,17 @@ def _run_verification(
 
     results.sort(key=lambda item: item["batch_id"])
     verified_findings = _merge_verified_findings(manifest, candidates=prepared_candidates, verification_results=results)
+    verification_llm_metrics = _aggregate_llm_metrics(_collect_llm_invocations(results))
+    verdict_counts = _verification_verdict_counts(results)
     verification_summary = {
+        "candidate_count": prepare_metrics["candidate_count"],
+        "ready_count": prepare_metrics["ready_count"],
+        "dropped_count": prepare_metrics["dropped_count"],
+        "anchor_failure_count": prepare_metrics["anchor_failure_count"],
+        "anchor_failure_rate": prepare_metrics["anchor_failure_rate"],
+        "drop_reason_counts": dict(prepare_metrics["drop_reason_counts"]),
+        **verdict_counts,
+        "rejection_rate": _ratio(verdict_counts["rejected_count"], len(ready_candidates)),
         "verified_count": len(verified_findings),
         "batch_count": len(results),
         "successful_batches": sum(1 for batch in results if batch["status"] == "succeeded"),
@@ -2005,6 +2413,7 @@ def _run_verification(
         "worker_count": worker_count,
         "timeout_sec": verifier_timeout_sec,
         "estimated_max_duration_sec": estimated_max_duration_sec,
+        **_llm_summary_fields(verification_llm_metrics),
     }
     verified_payload = _load_json_file(Path(manifest["verified_findings_file"]), default={})
     if isinstance(verified_payload, dict):
@@ -2464,6 +2873,10 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             failed=reviewers_summary["failed_passes"],
             finding_count=reviewers_summary["total_findings"],
             workers=reviewers_summary["worker_count"],
+            llm_call_count=reviewers_summary.get("llm_call_count"),
+            schema_retry_count=reviewers_summary.get("schema_retry_count"),
+            total_tokens=reviewers_summary.get("total_tokens"),
+            provider_breakdown=reviewers_summary.get("provider_breakdown"),
         )
         current_stage = None
 
@@ -2480,6 +2893,11 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             "Candidate findings ready",
             candidate_count=candidates_summary["candidate_count"],
             source_finding_count=candidates_summary["source_finding_count"],
+            duplicate_merge_count=max(0, int(candidates_summary.get("source_finding_count") or 0) - int(candidates_summary.get("candidate_count") or 0)),
+            duplicate_merge_rate=_ratio(
+                max(0, int(candidates_summary.get("source_finding_count") or 0) - int(candidates_summary.get("candidate_count") or 0)),
+                int(candidates_summary.get("source_finding_count") or 0),
+            ),
         )
         current_stage = None
 
@@ -2504,6 +2922,16 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             succeeded=verification_summary["successful_batches"],
             failed=verification_summary["failed_batches"],
             workers=verification_summary["worker_count"],
+            ready_count=verification_summary.get("ready_count"),
+            dropped_count=verification_summary.get("dropped_count"),
+            confirmed_count=verification_summary.get("confirmed_count"),
+            uncertain_count=verification_summary.get("uncertain_count"),
+            rejected_count=verification_summary.get("rejected_count"),
+            anchor_failure_count=verification_summary.get("anchor_failure_count"),
+            llm_call_count=verification_summary.get("llm_call_count"),
+            schema_retry_count=verification_summary.get("schema_retry_count"),
+            total_tokens=verification_summary.get("total_tokens"),
+            provider_breakdown=verification_summary.get("provider_breakdown"),
         )
         current_stage = None
 

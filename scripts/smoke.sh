@@ -287,6 +287,8 @@ from pathlib import Path
 summary = json.loads(Path(sys.argv[1]).read_text())
 status = json.loads(Path(summary["status_file"]).read_text())
 run_metrics = json.loads(Path(summary["run_metrics_file"]).read_text())
+reviewers = json.loads(Path(summary["reviewers_file"]).read_text())
+trace_lines = [json.loads(line) for line in Path(summary["trace_file"]).read_text().splitlines() if line.strip()]
 assert summary["contract_version"] == "ccr.run_summary.v1"
 assert status["contract_version"] == "ccr.run_status.v1"
 assert run_metrics["contract_version"] == "ccr.run_metrics.v1"
@@ -296,6 +298,13 @@ verification_prepare = json.loads(Path(summary["verification_prepare_file"]).rea
 assert verification_prepare["contract_version"] == "ccr.verification_prepare.v1"
 assert verification_prepare["summary"]["batch_count"] == 0
 assert run_metrics["route"]["total_passes"] == 14
+assert reviewers["summary"]["llm_call_count"] == 14
+assert reviewers["passes"][0]["llm_invocation"]["provider"] in {"gemini", "codex", "claude"}
+assert run_metrics["llm"]["total_calls"] == 14
+assert run_metrics["reviewers"]["provider_breakdown"]["gemini"]["call_count"] == 5
+reviewer_events = [entry for entry in trace_lines if entry["event"] == "reviewer_completed"]
+assert reviewer_events
+assert reviewer_events[0]["data"]["llm_invocation"]["schema_retries"] == 0
 PY
 
 echo "[smoke] detached harness + watch"
@@ -350,6 +359,7 @@ verification_prepare = json.loads(Path(launch["verification_prepare_file"]).read
 assert summary["contract_version"] == "ccr.run_summary.v1"
 assert status["contract_version"] == "ccr.run_status.v1"
 assert run_metrics["contract_version"] == "ccr.run_metrics.v1"
+assert run_metrics["llm"]["total_calls"] == 14
 assert verification_prepare["contract_version"] == "ccr.verification_prepare.v1"
 PY
 
