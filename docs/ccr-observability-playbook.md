@@ -13,17 +13,24 @@ Useful ways to discover it:
 
 Most observability and debugging starts from files in that run directory.
 
+Useful helper:
+
+```bash
+python3 quality/scripts/ccr_report.py --run-dir /tmp/ccr/<run_id>
+```
+
 ## Quick triage order
 
 When a run looks wrong, inspect artifacts in this order:
 
-1. **`run_summary.json`** — how the run ended
-2. **`run_metrics.json`** — whether the run was healthy, noisy, slow, or expensive
-3. **stage-specific artifacts** — why a finding survived, dropped, or failed to post
-4. **`trace.jsonl`** — exact event order and stage transitions
-5. **`status.json`** — current live state when the run is still in progress
+1. **`ccr_report.py` output** — compact funnel / provider / anomaly summary
+2. **`run_summary.json`** — how the run ended
+3. **`run_metrics.json`** — whether the run was healthy, noisy, slow, or expensive
+4. **stage-specific artifacts** — why a finding survived, dropped, or failed to post
+5. **`trace.jsonl`** — exact event order and stage transitions
+6. **`status.json`** — current live state when the run is still in progress
 
-This keeps debugging fast: start from the summary, then drill into the relevant stage instead of scanning raw traces first.
+This keeps debugging fast: start from the compact report, then the summary, and only drill into the relevant stage instead of scanning raw traces first.
 
 ## Artifact map
 
@@ -335,6 +342,12 @@ Recommended loop:
 5. write `expected.json`
 6. run `./scripts/evals.sh --suite <suite>`
 7. keep the fixture after the bug is fixed
+
+CCR now also has a scaffold helper for this conversion step:
+
+```bash
+python3 quality/scripts/ccr_eval.py --from-run /tmp/ccr/<run_id> --suite all --case-name my-incident
+```
 
 Suggested mapping:
 - routing issue -> `evals/ccr/routing_cases/`

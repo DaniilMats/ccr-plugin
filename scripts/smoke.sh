@@ -13,10 +13,19 @@ python3 -m py_compile \
   quality/scripts/ccr_run.py \
   quality/scripts/ccr_watch.py \
   quality/scripts/ccr_post_comments.py \
+  quality/scripts/ccr_report.py \
   quality/scripts/ccr_eval.py \
   quality/scripts/ccr_consolidate.py \
   quality/scripts/ccr_verify_prepare.py \
   quality/scripts/repomap.py \
+  quality/scripts/ccr_routing.py \
+  quality/scripts/ccr_runtime/common.py \
+  quality/scripts/ccr_runtime/manifest.py \
+  quality/scripts/ccr_runtime/observer.py \
+  quality/scripts/ccr_runtime/reporting.py \
+  quality/scripts/ccr_runtime/reviewers.py \
+  quality/scripts/ccr_runtime/telemetry.py \
+  quality/scripts/ccr_runtime/verification.py \
   quality/scripts/ccr_routing.py \
   quality/scripts/llm-proxy/code_review.py \
   quality/scripts/llm-proxy/code_review_verify.py \
@@ -308,6 +317,18 @@ assert reviewer_events
 assert reviewer_events[0]["data"]["llm_invocation"]["schema_retries"] == 0
 PY
 
+echo "[smoke] run report"
+python3 quality/scripts/ccr_report.py \
+  --summary-file "$TMP_DIR/ccr_run_summary.json" > "$TMP_DIR/ccr_report.txt"
+python3 - <<'PY' "$TMP_DIR/ccr_report.txt"
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding='utf-8')
+assert "Plan: Review plan:" in text
+assert "Funnel: reviewers 14/14" in text
+assert "Anomalies: none" in text
+PY
+
 echo "[smoke] detached harness + watch"
 python3 quality/scripts/ccr_run.py \
   package:internal/auth \
@@ -473,6 +494,31 @@ assert stdout_payload["contract_version"] == "ccr.eval_summary.v1"
 assert stdout_payload["passed_count"] == 1
 assert stdout_payload["failed_count"] == 0
 assert stdout_payload == written_payload
+PY
+
+echo "[smoke] eval scaffold from run"
+RUN_DIR="$(python3 - <<'PY' "$TMP_DIR/ccr_run_summary.json"
+import json, sys
+from pathlib import Path
+summary = json.loads(Path(sys.argv[1]).read_text())
+print(summary['run_dir'])
+PY
+)"
+python3 quality/scripts/ccr_eval.py \
+  --from-run "$RUN_DIR" \
+  --suite all \
+  --case-name smoke-scaffold \
+  --scaffold-dir "$TMP_DIR/eval_scaffold" > "$TMP_DIR/eval_scaffold.stdout.json"
+python3 - <<'PY' "$TMP_DIR/eval_scaffold.stdout.json" "$TMP_DIR/eval_scaffold"
+import json, sys
+from pathlib import Path
+payload = json.loads(Path(sys.argv[1]).read_text())
+root = Path(sys.argv[2])
+assert payload["contract_version"] == "ccr.eval_scaffold.v1"
+assert payload["case_count"] == 3
+assert (root / "routing_cases/smoke-scaffold/case.json").is_file()
+assert (root / "consolidation_cases/smoke-scaffold/case.json").is_file()
+assert (root / "verification_prepare_cases/smoke-scaffold/case.json").is_file()
 PY
 
 echo "[smoke] ok"
