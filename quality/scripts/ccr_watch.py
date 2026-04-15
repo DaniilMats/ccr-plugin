@@ -16,9 +16,10 @@ import json
 import os
 import sys
 import time
-import uuid
 from pathlib import Path
 from typing import Any
+
+from ccr_runtime.common import dedupe_preserve_order, format_milliseconds_short, format_seconds_short, load_json_file, write_json
 
 
 _CURSOR_CONTRACT_VERSION = "ccr.watch_cursor.v1"
@@ -73,22 +74,12 @@ _PERSONA_ORDER = ("logic", "security", "concurrency", "performance", "requiremen
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return None
+    payload = load_json_file(path, default=None)
     return payload if isinstance(payload, dict) else None
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}")
-    tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp_path, path)
+    write_json(path, payload)
 
 
 def _is_process_alive(pid: int | None) -> bool:
@@ -123,27 +114,8 @@ def _read_trace_since(trace_file: Path, since_seq: int) -> list[dict[str, Any]]:
     return events
 
 
-def _format_seconds_short(total_seconds: int | None) -> str:
-    if total_seconds is None:
-        return "n/a"
-    if total_seconds < 60:
-        return f"{total_seconds}s"
-    minutes, seconds = divmod(total_seconds, 60)
-    if minutes < 60:
-        return f"{minutes}m" if seconds == 0 else f"{minutes}m{seconds}s"
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours}h" if minutes == 0 and seconds == 0 else f"{hours}h{minutes}m{seconds}s"
-
-
-def _format_milliseconds_short(total_ms: int | None) -> str:
-    if total_ms is None:
-        return "n/a"
-    if total_ms < 1000:
-        return f"{total_ms}ms"
-    seconds = total_ms / 1000.0
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    return _format_seconds_short(int(round(seconds)))
+_format_seconds_short = format_seconds_short
+_format_milliseconds_short = format_milliseconds_short
 
 
 def _short_run_id(run_id: Any) -> str:
@@ -391,14 +363,7 @@ def _format_misc_event(event: dict[str, Any]) -> str | None:
 
 
 def _dedupe_preserve_order(lines: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for line in lines:
-        if not line or line in seen:
-            continue
-        seen.add(line)
-        result.append(line)
-    return result
+    return [line for line in dedupe_preserve_order(lines) if line]
 
 
 def _render_display_lines(status: dict[str, Any], events: list[dict[str, Any]], *, emit_heartbeat: bool, done: bool) -> list[str]:

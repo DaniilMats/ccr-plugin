@@ -26,40 +26,19 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ccr_consolidate import CandidateRecord
-from ccr_run_init import _write_json
+from ccr_runtime.common import dedupe_preserve_order, load_json_file, read_text, utc_now, write_json
+
+# Backward-compatible local aliases while shared runtime helpers are adopted.
+_read_text = read_text
+_load_json_file = load_json_file
+_write_json = write_json
+_dedupe_preserve_order = dedupe_preserve_order
+_utc_now = utc_now
 
 _DIFF_HEADER_RE = re.compile(r"^diff --git a/(.+?) b/(.+)$")
 _HUNK_HEADER_RE = re.compile(
     r"^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@"
 )
-
-
-def _utc_now() -> str:
-    import time
-
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def _load_json_file(path: Path, *, default: Any = None) -> Any:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default
-
-
-def _dedupe_preserve_order(items: list[str]) -> list[str]:
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for item in items:
-        if item in seen:
-            continue
-        seen.add(item)
-        ordered.append(item)
-    return ordered
 
 
 def _candidate_from_contract(item: dict[str, Any]) -> CandidateRecord:
@@ -95,14 +74,17 @@ def _candidate_from_contract(item: dict[str, Any]) -> CandidateRecord:
     )
 
 
-def _load_candidates_manifest(path: Path) -> tuple[list[CandidateRecord], dict[str, Any]]:
-    payload = _load_json_file(path, default={})
+def load_candidates_manifest(path: Path) -> tuple[list[CandidateRecord], dict[str, Any]]:
+    payload = load_json_file(path, default={})
     if not isinstance(payload, dict):
         raise ValueError(f"candidates file has unsupported shape: {path}")
     items = payload.get("candidates") if isinstance(payload.get("candidates"), list) else []
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     candidates = [_candidate_from_contract(item) for item in items if isinstance(item, dict)]
     return candidates, summary
+
+
+_load_candidates_manifest = load_candidates_manifest
 
 
 def _split_diff_blocks(diff_text: str) -> dict[str, str]:
@@ -299,7 +281,7 @@ def _prepare_candidate(
     return replace(
         candidate,
         anchor_status=anchor_status,
-        evidence_sources=_dedupe_preserve_order([item for item in evidence_sources if item]),
+        evidence_sources=dedupe_preserve_order([item for item in evidence_sources if item]),
         prefilter={
             "ready_for_verification": not deduped_reasons,
             "drop_reasons": deduped_reasons,
@@ -363,7 +345,7 @@ def _write_verification_batches(
                 ],
             }
             batch_path = verify_batch_dir / f"verify_batch_{batch_index:03d}.json"
-            _write_json(batch_path, batch_payload)
+            write_json(batch_path, batch_payload)
             batches.append(
                 {
                     "batch_id": f"B{batch_index}",
@@ -405,7 +387,7 @@ def prepare_verification_artifacts(
     )
     payload = {
         "contract_version": "ccr.verification_prepare.v1",
-        "prepared_at": _utc_now(),
+        "prepared_at": utc_now(),
         "ready_candidates": [_candidate_contract_with_prefilter(candidate) for candidate in ready_candidates],
         "dropped_candidates": [_candidate_contract_with_prefilter(candidate) for candidate in dropped_candidates],
         "batches": [
@@ -436,7 +418,7 @@ def prepare_verification_artifacts(
         },
     }
     if output_file is not None:
-        _write_json(output_file, payload)
+        write_json(output_file, payload)
     return {
         "prepared_candidates": prepared_candidates,
         "ready_candidates": ready_candidates,
@@ -462,11 +444,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _build_arg_parser().parse_args()
-    candidates, _summary = _load_candidates_manifest(Path(args.candidates_file).expanduser().resolve())
-    artifact_text = _read_text(Path(args.artifact_file).expanduser().resolve())
+    candidates, _summary = load_candidates_manifest(Path(args.candidates_file).expanduser().resolve())
+    artifact_text = read_text(Path(args.artifact_file).expanduser().resolve())
     requirements_text = ""
     if args.requirements_file:
-        requirements_text = _read_text(Path(args.requirements_file).expanduser().resolve())
+        requirements_text = read_text(Path(args.requirements_file).expanduser().resolve())
     project_dir = Path(args.project_dir).expanduser().resolve() if args.project_dir else None
     result = prepare_verification_artifacts(
         candidates,

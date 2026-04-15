@@ -12,15 +12,16 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 import time
-import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from ccr_runtime.common import load_json_file, ratio, read_text, run_command, utc_now, write_json
 
 
 _POSTING_APPROVAL_CONTRACT = "ccr.posting_approval.v1"
@@ -31,6 +32,13 @@ _DIFF_HEADER_RE = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")
 _HUNK_RE = re.compile(r"^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@")
 _FINGERPRINT_RE = re.compile(r"<!--\s*ccr:fingerprint=(?P<fingerprint>[0-9a-f]{8,64})\b[^>]*-->", re.IGNORECASE)
 
+# Backward-compatible local aliases while shared runtime helpers are adopted.
+_utc_now = utc_now
+_read_text = read_text
+_load_json_file = load_json_file
+_write_json = write_json
+_ratio = ratio
+
 
 @dataclass(frozen=True)
 class DiffLineRef:
@@ -39,32 +47,6 @@ class DiffLineRef:
     old_line: int | None
     new_line: int | None
     line_kind: str
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def _load_json_file(path: Path, *, default: Any | None = None) -> Any:
-    if not path.is_file():
-        if default is not None:
-            return default
-        raise FileNotFoundError(f"JSON file not found: {path}")
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid JSON in {path}: {exc}") from exc
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}")
-    tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp_path, path)
 
 
 def _ensure_dict(payload: Any, *, label: str) -> dict[str, Any]:
@@ -350,12 +332,6 @@ _POSTING_RESULT_STATUSES = (
 )
 
 
-def _ratio(numerator: int, denominator: int) -> float | None:
-    if denominator <= 0:
-        return None
-    return round(numerator / denominator, 4)
-
-
 
 def _normalize_metric_label(value: Any) -> str | None:
     text = str(value or "").strip().lower()
@@ -604,16 +580,6 @@ def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None 
     return payload
 
 
-def _run_command(cmd: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
 def _gitlab_api(glab_bin: str, project: str, path_suffix: str, *, method: str = "GET", input_file: Path | None = None) -> Any:
     encoded_project = quote(project, safe="")
     api_path = f"projects/{encoded_project}/{path_suffix.lstrip('/')}"
@@ -622,7 +588,7 @@ def _gitlab_api(glab_bin: str, project: str, path_suffix: str, *, method: str = 
         cmd.extend(["-X", method.upper()])
     if input_file is not None:
         cmd.extend(["-H", "Content-Type: application/json", "--input", str(input_file)])
-    result = _run_command(cmd)
+    result = run_command(cmd)
     if result.returncode != 0:
         stderr = result.stderr.strip() or result.stdout.strip()
         raise RuntimeError(f"glab api failed for {api_path}: {stderr}")
