@@ -25,6 +25,7 @@ As of 2026-04-14:
 - Phase 1.3.1 is complete: clearer icon-prefixed watcher lines and stricter no-filler monitor guidance
 - Phase 2 is complete: deterministic `ccr_post_comments.py`, explicit `posting_approval.json` / `posting_manifest.json` / `posting_results.json`, fingerprint-based idempotency, and validated `DiffNote` posting flow
 - Detailed Phase 2 implementation plan: `quality/agents/ccr-phase2-implementation-plan.md`
+- Detailed Phase 3 implementation plan: `quality/agents/ccr-phase3-implementation-plan.md`
 
 ---
 

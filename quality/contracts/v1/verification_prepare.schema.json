@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRVerificationPrepareV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "prepared_at", "ready_candidates", "dropped_candidates", "batches", "summary"],
+  "properties": {
+    "contract_version": { "const": "ccr.verification_prepare.v1" },
+    "prepared_at": { "type": "string", "minLength": 1 },
+    "ready_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["candidate_id", "file", "line", "message", "ready_for_verification", "drop_reasons"],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "message": { "type": "string" },
+          "ready_for_verification": { "const": true },
+          "drop_reasons": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "dropped_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["candidate_id", "file", "line", "message", "ready_for_verification", "drop_reasons"],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "message": { "type": "string" },
+          "ready_for_verification": { "const": false },
+          "drop_reasons": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "batches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["batch_id", "batch_file", "candidate_ids", "candidate_count"],
+        "properties": {
+          "batch_id": { "type": "string" },
+          "batch_file": { "type": "string", "minLength": 1 },
+          "file": { "type": "string" },
+          "candidate_ids": { "type": "array", "items": { "type": "string" } },
+          "candidate_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["candidate_count", "ready_count", "dropped_count", "batch_count"],
+      "properties": {
+        "candidate_count": { "type": "integer", "minimum": 0 },
+        "ready_count": { "type": "integer", "minimum": 0 },
+        "dropped_count": { "type": "integer", "minimum": 0 },
+        "batch_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

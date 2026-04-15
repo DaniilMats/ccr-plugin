@@ -376,6 +376,7 @@ def _compact_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]:
         "report_file",
         "reviewers_file",
         "candidates_file",
+        "verification_prepare_file",
         "verified_findings_file",
     )
     return {

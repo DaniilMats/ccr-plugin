@@ -17,7 +17,13 @@
           "file": { "type": "string" },
           "line": { "type": "integer", "minimum": 1 },
           "revised_message": { "type": "string" },
-          "evidence": { "type": "string" }
+          "evidence": { "type": "string" },
+          "anchor_status": { "enum": ["diff", "file_context", "missing", "unknown"] },
+          "evidence_sources": { "type": "array", "items": { "type": "string" } },
+          "support_count": { "type": "integer", "minimum": 0 },
+          "available_pass_count": { "type": "integer", "minimum": 0 },
+          "prefilter_status": { "type": ["string", "null"] },
+          "evidence_bundle": { "type": "object", "additionalProperties": true }
         }
       }
     },

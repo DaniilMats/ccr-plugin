@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRCandidatesManifestV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "candidates", "summary"],
+  "properties": {
+    "contract_version": { "const": "ccr.candidates_manifest.v1" },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["contract_version", "candidate_id", "persona", "file", "line", "message"],
+        "properties": {
+          "contract_version": { "const": "ccr.consolidated_candidate.v1" },
+          "candidate_id": { "type": "string" },
+          "persona": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "message": { "type": "string" },
+          "severity": { "enum": ["bug", "warning", "info"] },
+          "reviewers": { "type": "array", "items": { "type": "string" } },
+          "supporting_personas": { "type": "array", "items": { "type": "string" } },
+          "consensus": { "type": "string" },
+          "support_count": { "type": "integer", "minimum": 0 },
+          "available_pass_count": { "type": "integer", "minimum": 0 },
+          "symbol": { "type": ["string", "null"] },
+          "normalized_category": { "type": ["string", "null"] },
+          "anchor_status": { "enum": ["diff", "file_context", "missing", "unknown"] },
+          "evidence_sources": { "type": "array", "items": { "type": "string" } },
+          "source_findings": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "prefilter": { "type": "object", "additionalProperties": true },
+          "evidence_bundle": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["candidate_count", "source_finding_count"],
+      "properties": {
+        "candidate_count": { "type": "integer", "minimum": 0 },
+        "source_finding_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

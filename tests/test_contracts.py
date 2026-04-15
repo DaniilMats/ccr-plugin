@@ -34,8 +34,11 @@ class TestContracts(unittest.TestCase):
             "static_analysis.schema.json",
             "reviewer_result.schema.json",
             "consolidated_candidate.schema.json",
+            "candidates_manifest.schema.json",
+            "verification_prepare.schema.json",
             "verification_batch.schema.json",
             "verification_result.schema.json",
+            "verified_findings.schema.json",
             "posting_approval.schema.json",
             "posting_manifest.schema.json",
             "posting_result.schema.json",
@@ -141,6 +144,7 @@ class TestContracts(unittest.TestCase):
             "report_file": "/tmp/ccr/run/report.md",
             "reviewers_file": "/tmp/ccr/run/reviewers.json",
             "candidates_file": "/tmp/ccr/run/candidates.json",
+            "verification_prepare_file": "/tmp/ccr/run/verification_prepare.json",
             "verified_findings_file": "/tmp/ccr/run/verified_findings.json",
             "posting_approval_file": "/tmp/ccr/run/posting_approval.json",
             "posting_manifest_file": "/tmp/ccr/run/posting_manifest.json",
@@ -173,6 +177,7 @@ class TestContracts(unittest.TestCase):
             "report_file": "/tmp/ccr/run/report.md",
             "reviewers_file": "/tmp/ccr/run/reviewers.json",
             "candidates_file": "/tmp/ccr/run/candidates.json",
+            "verification_prepare_file": "/tmp/ccr/run/verification_prepare.json",
             "verified_findings_file": "/tmp/ccr/run/verified_findings.json",
             "posting_approval_file": "/tmp/ccr/run/posting_approval.json",
             "posting_manifest_file": "/tmp/ccr/run/posting_manifest.json",
@@ -249,15 +254,109 @@ class TestContracts(unittest.TestCase):
             "contract_version": "ccr.consolidated_candidate.v1",
             "candidate_id": "F1",
             "persona": "security",
+            "supporting_personas": ["logic"],
             "file": "internal/auth/jwt.go",
             "line": 12,
             "message": "Example candidate.",
             "severity": "bug",
             "reviewers": ["security_p1", "security_p2"],
             "consensus": "2/2",
+            "support_count": 2,
+            "available_pass_count": 2,
+            "symbol": "ValidateToken",
+            "normalized_category": "jwt-validation-missing-expiry-check",
+            "anchor_status": "diff",
             "evidence_sources": ["diff_hunk", "gosec"],
+            "source_findings": [
+                {
+                    "pass_name": "security_p1",
+                    "provider": "gemini",
+                    "persona": "security",
+                    "file": "internal/auth/jwt.go",
+                    "line": 12,
+                    "severity": "bug",
+                    "message": "Example candidate.",
+                }
+            ],
+            "prefilter": {
+                "ready_for_verification": True,
+                "drop_reasons": [],
+            },
+            "evidence_bundle": {
+                "diff_hunk": "@@ -1,1 +1,2 @@",
+                "file_context": "package auth",
+                "requirements_excerpt": "",
+                "static_analysis": [],
+            },
         }
         self._assert_valid(payload, "consolidated_candidate.schema.json")
+
+    def test_candidates_manifest_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.candidates_manifest.v1",
+            "candidates": [
+                {
+                    "contract_version": "ccr.consolidated_candidate.v1",
+                    "candidate_id": "F1",
+                    "persona": "security",
+                    "file": "internal/auth/jwt.go",
+                    "line": 12,
+                    "message": "Example candidate.",
+                    "severity": "bug",
+                    "reviewers": ["security_p1", "security_p2"],
+                    "consensus": "2/2",
+                    "evidence_sources": ["diff_hunk", "gosec"],
+                }
+            ],
+            "summary": {
+                "candidate_count": 1,
+                "source_finding_count": 2,
+            },
+        }
+        self._assert_valid(payload, "candidates_manifest.schema.json")
+
+    def test_verification_prepare_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.verification_prepare.v1",
+            "prepared_at": "2026-04-15T00:00:00Z",
+            "ready_candidates": [
+                {
+                    "candidate_id": "F1",
+                    "file": "internal/auth/jwt.go",
+                    "line": 12,
+                    "message": "Example candidate.",
+                    "ready_for_verification": True,
+                    "drop_reasons": [],
+                    "persona": "security",
+                }
+            ],
+            "dropped_candidates": [
+                {
+                    "candidate_id": "F2",
+                    "file": "internal/auth/jwt.go",
+                    "line": 30,
+                    "message": "Dropped candidate.",
+                    "ready_for_verification": False,
+                    "drop_reasons": ["missing_anchor"],
+                }
+            ],
+            "batches": [
+                {
+                    "batch_id": "B1",
+                    "batch_file": "/tmp/ccr/run/verify_batches/verify_batch_001.json",
+                    "file": "internal/auth/jwt.go",
+                    "candidate_ids": ["F1"],
+                    "candidate_count": 1,
+                }
+            ],
+            "summary": {
+                "candidate_count": 2,
+                "ready_count": 1,
+                "dropped_count": 1,
+                "batch_count": 1,
+            },
+        }
+        self._assert_valid(payload, "verification_prepare.schema.json")
 
     def test_verification_batch_contract(self) -> None:
         payload = {
@@ -272,6 +371,16 @@ class TestContracts(unittest.TestCase):
                     "file": "internal/auth/jwt.go",
                     "line": 12,
                     "message": "Example candidate.",
+                    "persona": "security",
+                    "severity": "bug",
+                    "reviewers": ["security_p1", "security_p2"],
+                    "consensus": "2/2",
+                    "symbol": "ValidateToken",
+                    "anchor_status": "diff",
+                    "evidence_sources": ["diff_hunk", "gosec"],
+                    "source_findings": [],
+                    "evidence_bundle": {"diff_hunk": "@@ -1,1 +1,2 @@"},
+                    "prefilter": {"ready_for_verification": True, "drop_reasons": []},
                 }
             ],
         }
@@ -288,12 +397,62 @@ class TestContracts(unittest.TestCase):
                     "line": 12,
                     "revised_message": "Tightened message.",
                     "evidence": "Supported by the provided diff.",
+                    "anchor_status": "diff",
+                    "evidence_sources": ["diff_hunk", "gosec"],
+                    "support_count": 2,
+                    "available_pass_count": 2,
+                    "prefilter_status": "ready",
+                    "evidence_bundle": {"diff_hunk": "@@ -1,1 +1,2 @@"},
                 }
             ],
             "summary": "One finding confirmed.",
             "raw_response": "{}",
         }
         self._assert_valid(payload, "verification_result.schema.json")
+
+    def test_verified_findings_contract(self) -> None:
+        payload = {
+            "contract_version": "ccr.verified_findings.v1",
+            "verified_findings": [
+                {
+                    "candidate_id": "F1",
+                    "persona": "security",
+                    "severity": "bug",
+                    "file": "internal/auth/jwt.go",
+                    "line": 12,
+                    "message": "Tightened message.",
+                    "evidence": "Supported by the provided diff.",
+                    "verdict": "confirmed",
+                    "reviewers": ["security_p1", "security_p2"],
+                    "consensus": "2/2",
+                    "evidence_sources": ["diff_hunk", "gosec"],
+                    "tentative": False,
+                    "finding_number": 1,
+                    "support_count": 2,
+                    "available_pass_count": 2,
+                    "anchor_status": "diff",
+                    "evidence_bundle": {"diff_hunk": "@@ -1,1 +1,2 @@"},
+                    "prefilter_status": "ready",
+                }
+            ],
+            "verification_batches": [
+                {
+                    "batch_id": "B1",
+                    "status": "succeeded",
+                    "batch_file": "/tmp/ccr/run/verify_batches/verify_batch_001.json",
+                }
+            ],
+            "summary": {
+                "verified_count": 1,
+                "batch_count": 1,
+                "successful_batches": 1,
+                "failed_batches": 0,
+                "worker_count": 1,
+                "timeout_sec": 300,
+                "estimated_max_duration_sec": 300,
+            },
+        }
+        self._assert_valid(payload, "verified_findings.schema.json")
 
     def test_posting_approval_contract(self) -> None:
         payload = {

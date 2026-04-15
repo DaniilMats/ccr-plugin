@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CCRVerifiedFindingsV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_version", "verified_findings", "verification_batches", "summary"],
+  "properties": {
+    "contract_version": { "const": "ccr.verified_findings.v1" },
+    "verified_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "candidate_id",
+          "persona",
+          "severity",
+          "file",
+          "line",
+          "message",
+          "evidence",
+          "verdict",
+          "reviewers",
+          "consensus",
+          "evidence_sources",
+          "tentative",
+          "finding_number"
+        ],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "persona": { "type": "string" },
+          "severity": { "enum": ["bug", "warning", "info"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "message": { "type": "string" },
+          "evidence": { "type": "string" },
+          "verdict": { "enum": ["confirmed", "uncertain"] },
+          "reviewers": { "type": "array", "items": { "type": "string" } },
+          "consensus": { "type": "string" },
+          "evidence_sources": { "type": "array", "items": { "type": "string" } },
+          "tentative": { "type": "boolean" },
+          "finding_number": { "type": "integer", "minimum": 1 },
+          "support_count": { "type": "integer", "minimum": 0 },
+          "available_pass_count": { "type": "integer", "minimum": 0 },
+          "anchor_status": { "enum": ["diff", "file_context", "missing", "unknown"] },
+          "evidence_bundle": { "type": "object", "additionalProperties": true },
+          "prefilter_status": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "verification_batches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["batch_id", "status"],
+        "properties": {
+          "batch_id": { "type": "string" },
+          "status": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["verified_count", "batch_count", "successful_batches"],
+      "properties": {
+        "verified_count": { "type": "integer", "minimum": 0 },
+        "batch_count": { "type": "integer", "minimum": 0 },
+        "successful_batches": { "type": "integer", "minimum": 0 },
+        "failed_batches": { "type": "integer", "minimum": 0 },
+        "worker_count": { "type": "integer", "minimum": 0 },
+        "timeout_sec": { "type": "integer", "minimum": 0 },
+        "estimated_max_duration_sec": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -303,6 +303,7 @@ class RunObserver:
                 "report_file": manifest["report_file"],
                 "reviewers_file": manifest["reviewers_file"],
                 "candidates_file": manifest["candidates_file"],
+                "verification_prepare_file": manifest["verification_prepare_file"],
                 "verified_findings_file": manifest["verified_findings_file"],
                 "posting_approval_file": manifest["posting_approval_file"],
                 "posting_manifest_file": manifest["posting_manifest_file"],
@@ -1809,6 +1810,63 @@ def _extract_file_context(project_dir: Path | None, rel_path: str, target_lines:
     return "\n".join(snippet)
 
 
+def _prepare_candidate_for_verification(candidate: CandidateRecord, *, ready_for_verification: bool, drop_reasons: list[str] | None = None) -> dict[str, Any]:
+    payload = candidate.to_contract_dict()
+    payload["ready_for_verification"] = ready_for_verification
+    payload["drop_reasons"] = list(drop_reasons or [])
+    return payload
+
+
+
+def _write_verification_prepare(
+    manifest: dict[str, Any],
+    *,
+    candidates: list[CandidateRecord],
+    batches: list[dict[str, Any]],
+    dropped_candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    ready_candidates = [
+        _prepare_candidate_for_verification(candidate, ready_for_verification=True)
+        for candidate in candidates
+    ]
+    dropped = list(dropped_candidates or [])
+    payload = {
+        "contract_version": "ccr.verification_prepare.v1",
+        "prepared_at": _utc_now(),
+        "ready_candidates": ready_candidates,
+        "dropped_candidates": dropped,
+        "batches": [
+            {
+                "batch_id": batch["batch_id"],
+                "batch_file": batch["batch_file"],
+                "file": batch.get("payload", {}).get("file") if isinstance(batch.get("payload"), dict) else None,
+                "candidate_ids": [
+                    str(item.get("candidate_id") or "")
+                    for item in (batch.get("payload", {}).get("candidates") if isinstance(batch.get("payload"), dict) else [])
+                    if isinstance(item, dict) and item.get("candidate_id")
+                ],
+                "candidate_count": len(
+                    [
+                        item
+                        for item in (batch.get("payload", {}).get("candidates") if isinstance(batch.get("payload"), dict) else [])
+                        if isinstance(item, dict)
+                    ]
+                ),
+            }
+            for batch in batches
+        ],
+        "summary": {
+            "candidate_count": len(candidates) + len(dropped),
+            "ready_count": len(ready_candidates),
+            "dropped_count": len(dropped),
+            "batch_count": len(batches),
+        },
+    }
+    _write_json(Path(manifest["verification_prepare_file"]), payload)
+    return payload
+
+
+
 def _write_verification_batches(
     manifest: dict[str, Any],
     *,
@@ -2026,6 +2084,11 @@ def _run_verification(
             "timeout_sec": verifier_timeout_sec,
             "estimated_max_duration_sec": 0,
         }
+        _write_verification_prepare(
+            manifest,
+            candidates=[],
+            batches=[],
+        )
         payload = {
             "contract_version": "ccr.verified_findings.v1",
             "verified_findings": [],
@@ -2041,6 +2104,11 @@ def _run_verification(
         artifact_text=artifact_text,
         project_dir=project_dir,
         requirements_text=requirements_text,
+    )
+    _write_verification_prepare(
+        manifest,
+        candidates=candidates,
+        batches=batches,
     )
 
     worker_count = _resolve_worker_count(max_verifier_workers, len(batches), auto_cap=8)
@@ -2327,6 +2395,7 @@ def launch_ccr_detached(args: argparse.Namespace, raw_args: list[str]) -> dict[s
         "report_file": manifest["report_file"],
         "reviewers_file": manifest["reviewers_file"],
         "candidates_file": manifest["candidates_file"],
+        "verification_prepare_file": manifest["verification_prepare_file"],
         "verified_findings_file": manifest["verified_findings_file"],
         "posting_approval_file": manifest["posting_approval_file"],
         "posting_manifest_file": manifest["posting_manifest_file"],
@@ -2609,6 +2678,7 @@ def run_ccr(args: argparse.Namespace) -> dict[str, Any]:
             "report_file": manifest["report_file"],
             "reviewers_file": manifest["reviewers_file"],
             "candidates_file": manifest["candidates_file"],
+            "verification_prepare_file": manifest["verification_prepare_file"],
             "verified_findings_file": manifest["verified_findings_file"],
             "posting_approval_file": manifest["posting_approval_file"],
             "posting_manifest_file": manifest["posting_manifest_file"],
