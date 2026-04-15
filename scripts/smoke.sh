@@ -372,12 +372,7 @@ Path(manifest["verified_findings_file"]).write_text(json.dumps({
 Path(manifest["posting_approval_file"]).write_text(json.dumps({
     "contract_version": "ccr.posting_approval.v1",
     "run_id": manifest["run_id"],
-    "project": "group/project",
-    "mr_iid": 200,
     "approved_finding_numbers": [1],
-    "approved_all": False,
-    "approved_at": "2026-04-15T00:00:00Z",
-    "source": "smoke",
 }) + "\n", encoding="utf-8")
 PY
 python3 quality/scripts/ccr_post_comments.py \
@@ -388,8 +383,14 @@ import json, sys
 from pathlib import Path
 prepared = json.loads(Path(sys.argv[1]).read_text())
 manifest = json.loads(Path(sys.argv[2]).read_text())
+approval = json.loads(Path(manifest["posting_approval_file"]).read_text())
 assert prepared["contract_version"] == "ccr.posting_manifest.v1"
 assert prepared["summary"]["ready_count"] == 1
+assert approval["project"] == "group/project"
+assert approval["mr_iid"] == 200
+assert approval["approved_all"] is False
+assert approval["source"] == "user_selection"
+assert approval["approved_at"]
 assert Path(manifest["posting_manifest_file"]).is_file()
 PY
 

@@ -315,17 +315,33 @@ Use these inputs:
 
 Posting rules:
 1. Materialize the user's approval into `posting_approval_file` with Python `json.dump()` using contract version `ccr.posting_approval.v1`
-2. In MR mode, call:
+2. Write this shape when you create `posting_approval_file`:
+   ```json
+   {
+     "contract_version": "ccr.posting_approval.v1",
+     "run_id": "<run_id>",
+     "project": "<project path from MR target>",
+     "mr_iid": 123,
+     "approved_finding_numbers": [1, 3],
+     "approved_all": false,
+     "approved_at": "<UTC ISO8601 timestamp>",
+     "source": "user_selection"
+   }
+   ```
+   - If the user approved all findings, set `approved_all: true`
+   - If the selection came from `AskUserQuestion`, still persist the same shape
+   - `ccr_post_comments.py` can backfill missing MR target metadata for older approval files, but do **not** rely on that in fresh runs
+3. In MR mode, call:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ccr_post_comments.py \
      --manifest-file <manifest_file> \
      --approval-file <posting_approval_file> \
      --apply
    ```
-3. Do **NOT** manually construct `glab api ... discussions` requests in the prompt
-4. After the helper exits, read `posting_results_file` and summarize posted / already-posted / skipped / failed counts
-5. If any posting result failed, show the failures clearly and stop; do not claim the publish step fully succeeded
-6. Local modes never reach this step
+4. Do **NOT** manually construct `glab api ... discussions` requests in the prompt
+5. After the helper exits, read `posting_results_file` and summarize posted / already-posted / skipped / failed counts
+6. If any posting result failed, show the failures clearly and stop; do not claim the publish step fully succeeded
+7. Local modes never reach this step
 
 ## Verified Finding Shape
 

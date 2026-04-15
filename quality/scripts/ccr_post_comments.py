@@ -266,6 +266,40 @@ def _build_position_payload(anchor: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _normalize_approval_payload(
+    approval: dict[str, Any],
+    *,
+    manifest_run_id: str,
+    target_project: str,
+    target_mr_iid: int,
+) -> dict[str, Any]:
+    if approval.get("contract_version") != _POSTING_APPROVAL_CONTRACT:
+        raise ValueError(f"unsupported approval contract: {approval.get('contract_version')!r}")
+    if str(approval.get("run_id") or "") != str(manifest_run_id):
+        raise ValueError("approval run_id does not match run manifest")
+
+    explicit_project = str(approval.get("project") or "").strip()
+    explicit_mr_iid_raw = approval.get("mr_iid")
+    if explicit_project and explicit_project != target_project:
+        raise ValueError("approval target does not match run summary MR target")
+    if explicit_mr_iid_raw not in (None, ""):
+        explicit_mr_iid = int(explicit_mr_iid_raw)
+        if explicit_mr_iid != target_mr_iid:
+            raise ValueError("approval target does not match run summary MR target")
+
+    return {
+        "contract_version": _POSTING_APPROVAL_CONTRACT,
+        "run_id": manifest_run_id,
+        "project": explicit_project or target_project,
+        "mr_iid": int(explicit_mr_iid_raw) if explicit_mr_iid_raw not in (None, "") else target_mr_iid,
+        "approved_finding_numbers": _dedupe_ints(list(approval.get("approved_finding_numbers") or [])),
+        "approved_all": bool(approval.get("approved_all", False)),
+        "approved_at": str(approval.get("approved_at") or _utc_now()),
+        "source": str(approval.get("source") or "user_selection"),
+    }
+
+
+
 def _load_context(manifest_file: Path, approval_file_override: Path | None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], str, int, dict[str, str], list[dict[str, Any]]]:
     manifest = _ensure_dict(_load_json_file(manifest_file), label="run manifest")
     summary = _ensure_dict(_load_json_file(Path(manifest["summary_file"]), default={}), label="run summary")
@@ -280,17 +314,15 @@ def _load_context(manifest_file: Path, approval_file_override: Path | None) -> t
 
     approval_path = approval_file_override or Path(manifest["posting_approval_file"])
     approval = _ensure_dict(_load_json_file(approval_path), label="posting approval")
-    if approval.get("contract_version") != _POSTING_APPROVAL_CONTRACT:
-        raise ValueError(f"unsupported approval contract: {approval.get('contract_version')!r}")
-    if str(approval.get("run_id") or "") != str(manifest.get("run_id") or ""):
-        raise ValueError("approval run_id does not match run manifest")
-
-    project = str(approval.get("project") or "").strip()
-    mr_iid = int(approval.get("mr_iid") or 0)
-    if not project or mr_iid < 1:
-        raise ValueError("approval file is missing project or mr_iid")
-    if project != target_project or mr_iid != target_mr_iid:
-        raise ValueError("approval target does not match run summary MR target")
+    normalized_approval = _normalize_approval_payload(
+        approval,
+        manifest_run_id=str(manifest.get("run_id") or ""),
+        target_project=target_project,
+        target_mr_iid=target_mr_iid,
+    )
+    if approval != normalized_approval:
+        _write_json(approval_path, normalized_approval)
+    approval = normalized_approval
 
     mr_metadata = _ensure_dict(_load_json_file(Path(manifest["mr_metadata_file"]), default={}), label="mr metadata")
     diff_refs_raw = mr_metadata.get("diff_refs") if isinstance(mr_metadata.get("diff_refs"), dict) else {}
@@ -304,7 +336,7 @@ def _load_context(manifest_file: Path, approval_file_override: Path | None) -> t
 
     verified_payload = _ensure_dict(_load_json_file(Path(manifest["verified_findings_file"]), default={}), label="verified findings")
     verified_findings, _ = _index_verified_findings(verified_payload)
-    return manifest, summary, approval, project, mr_iid, diff_refs, verified_findings
+    return manifest, summary, approval, str(approval["project"]), int(approval["mr_iid"]), diff_refs, verified_findings
 
 
 def prepare_posting_manifest(manifest_file: Path, *, approval_file: Path | None = None) -> dict[str, Any]:

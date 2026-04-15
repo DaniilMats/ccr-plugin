@@ -165,6 +165,100 @@ class TestCCRPostComments(unittest.TestCase):
             self.assertEqual(request_payload["position"]["new_line"], 2)
             self.assertTrue(Path(manifest["posting_manifest_file"]).is_file())
 
+    def test_prepare_only_backfills_minimal_approval_payload(self) -> None:
+        diff_text = "\n".join(
+            [
+                "diff --git a/internal/auth/jwt.go b/internal/auth/jwt.go",
+                "index 1111111..2222222 100644",
+                "--- a/internal/auth/jwt.go",
+                "+++ b/internal/auth/jwt.go",
+                "@@ -1,1 +1,2 @@",
+                " package auth",
+                "+func Validate() {}",
+                "",
+            ]
+        )
+        verified_findings = [
+            {
+                "finding_number": 1,
+                "candidate_id": "F1",
+                "file": "internal/auth/jwt.go",
+                "line": 2,
+                "message": "Validate the token before returning.",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest, manifest_file = self._setup_mr_run(
+                Path(tmp),
+                verified_findings=verified_findings,
+                approval_numbers=[1],
+                diff_text=diff_text,
+            )
+            self._write_json(
+                Path(manifest["posting_approval_file"]),
+                {
+                    "contract_version": "ccr.posting_approval.v1",
+                    "run_id": manifest["run_id"],
+                    "approved_finding_numbers": [1],
+                },
+            )
+
+            prepared = self.module.prepare_posting_manifest(manifest_file)
+            normalized_approval = json.loads(Path(manifest["posting_approval_file"]).read_text(encoding="utf-8"))
+
+            self.assertEqual(prepared["summary"]["ready_count"], 1)
+            self.assertEqual(normalized_approval["project"], "group/project")
+            self.assertEqual(normalized_approval["mr_iid"], 200)
+            self.assertEqual(normalized_approval["approved_finding_numbers"], [1])
+            self.assertFalse(normalized_approval["approved_all"])
+            self.assertEqual(normalized_approval["source"], "user_selection")
+            self.assertTrue(normalized_approval["approved_at"])
+
+    def test_prepare_rejects_approval_target_mismatch(self) -> None:
+        diff_text = "\n".join(
+            [
+                "diff --git a/internal/auth/jwt.go b/internal/auth/jwt.go",
+                "index 1111111..2222222 100644",
+                "--- a/internal/auth/jwt.go",
+                "+++ b/internal/auth/jwt.go",
+                "@@ -1,1 +1,2 @@",
+                " package auth",
+                "+func Validate() {}",
+                "",
+            ]
+        )
+        verified_findings = [
+            {
+                "finding_number": 1,
+                "candidate_id": "F1",
+                "file": "internal/auth/jwt.go",
+                "line": 2,
+                "message": "Validate the token before returning.",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest, manifest_file = self._setup_mr_run(
+                Path(tmp),
+                verified_findings=verified_findings,
+                approval_numbers=[1],
+                diff_text=diff_text,
+            )
+            self._write_json(
+                Path(manifest["posting_approval_file"]),
+                {
+                    "contract_version": "ccr.posting_approval.v1",
+                    "run_id": manifest["run_id"],
+                    "project": "other/project",
+                    "mr_iid": 200,
+                    "approved_finding_numbers": [1],
+                },
+            )
+
+            with self.assertRaisesRegex(ValueError, "approval target does not match run summary MR target"):
+                self.module.prepare_posting_manifest(manifest_file)
+
     def test_apply_skips_already_posted_fingerprint(self) -> None:
         diff_text = "\n".join(
             [
