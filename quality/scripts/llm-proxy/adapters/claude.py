@@ -1,4 +1,4 @@
-"""Claude CLI adapter for llm-proxy — Opus reviewer via `claude --print`."""
+"""Claude CLI adapter for llm-proxy — Claude Opus 4.7 reviewer via `claude --print`."""
 from __future__ import annotations
 
 import json
@@ -14,17 +14,15 @@ from adapters.base import BaseAdapter, ProxyResponse
 class ClaudeAdapter(BaseAdapter):
     """Adapter for the Anthropic Claude CLI (`claude --print`) in one-shot mode.
 
-    Uses Opus with max effort for review. Falls back to the user's default
-    Claude Code authentication (OAuth / Pro subscription via keychain, or
-    ANTHROPIC_API_KEY from env). The 1M-context beta is opt-in and only
-    requested when an API key is present — beta headers are rejected for
-    OAuth users.
+    Uses Claude Opus 4.7 with max effort for review. Falls back to the user's
+    default Claude Code authentication (OAuth / Pro subscription via keychain,
+    or ANTHROPIC_API_KEY from env). Opus 4.7 exposes the 1M context window
+    natively, so no beta headers are required.
     """
 
     PROVIDER = "claude"
-    DEFAULT_MODEL = "opus"
+    DEFAULT_MODEL = "claude-opus-4-7"
     DEFAULT_EFFORT = "max"
-    CONTEXT_1M_BETA = "context-1m-2025-08-07"
 
     REVIEWER_SYSTEM_PROMPT = (
         "You are a specialized static code reviewer. "
@@ -59,10 +57,6 @@ class ClaudeAdapter(BaseAdapter):
             "--exclude-dynamic-system-prompt-sections",
             "--system-prompt", self.REVIEWER_SYSTEM_PROMPT,
         ]
-
-        # Beta headers only work with API key auth, not OAuth/Pro
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            cmd += ["--betas", self.CONTEXT_1M_BETA]
 
         stdout, stderr, returncode, timed_out = self._run_subprocess(
             cmd, timeout, input_text=full_prompt

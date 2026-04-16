@@ -10,7 +10,7 @@ Adaptive multi-model code reviewer for [Claude Code](https://claude.com/claude-c
   - Single Go file → `file:<PATH>` or a raw path to a `.go` file
   - Go package directory → `package:<PATH>` or a raw path to a directory with `.go` files
 - **Adaptive fanout routing** (4-14 passes) driven by changed lines, triggered personas, and critical surfaces
-- **Triple-model diversity**: Pass 1 Gemini, Pass 2 Codex on a shuffled diff, Pass 3 Claude Opus with `--effort max`. Three independent models catch three different classes of issues. Logic always runs all three; specialty personas get Pass 3 only in the full matrix.
+- **Triple-model diversity**: Pass 1 Gemini, Pass 2 Codex on a shuffled diff, Pass 3 Claude Opus 4.7 with `--effort max`. Three independent models catch three different classes of issues. Logic always runs all three; specialty personas get Pass 3 only in the full matrix.
 - **Pre-review context synthesis**: deterministic `ccr_review_prepare.py` normalizes conditional requirements, extracts touched symbols/state terms, and builds a non-judgmental scenario matrix plus invariants/questions before reviewer passes start
 - **Evidence-based consolidation + verification prep**: deterministic `ccr_consolidate.py` and `ccr_verify_prepare.py` attach corroboration, evidence bundles, anchor status, and prefilter decisions before verifier execution
 - **Verification stage** (Codex with Gemini fallback) filters speculative findings before anything is shown to the user
@@ -29,7 +29,7 @@ CCR delegates reviewing to external CLI tools. You need:
 | `glab` | GitLab MR fetch + posting | `brew install glab && glab auth login` |
 | `gemini` | Pass 1 reviewers | `npm install -g @google/gemini-cli && gemini auth` |
 | `codex` | Pass 2 reviewers + verifier (default) | `npm install -g @openai/codex && codex login` |
-| `claude` | Pass 3 reviewers (Opus, max effort) | [Install Claude Code](https://claude.com/claude-code) — you already have it to run this plugin |
+| `claude` | Pass 3 reviewers (Claude Opus 4.7, max effort) | [Install Claude Code](https://claude.com/claude-code) — you already have it to run this plugin |
 
 CCR still partially works without some of these — missing tools just cause their passes to be skipped gracefully.
 
@@ -203,7 +203,7 @@ ccr-plugin/
 │           │   ├── base.py             # provider adapter interface
 │           │   ├── gemini.py           # Gemini CLI adapter (Pass 1)
 │           │   ├── codex.py            # Codex CLI adapter (Pass 2)
-│           │   └── claude.py           # Claude CLI adapter (Pass 3 — Opus, max effort)
+│           │   └── claude.py           # Claude CLI adapter (Pass 3 — Opus 4.7, max effort)
 │           ├── prompts/
 │           │   ├── code_review.txt         # base code review prompt
 │           │   ├── go_style_guide.txt      # embedded Go style guide
@@ -255,7 +255,7 @@ See `quality/agents/ccr.md` for the full workflow specification.
 
 ## Status
 
-Current release `v0.7.1` builds on the completed Phase 4 (non-CI) foundation from `v0.6.0`: CCR now has an isolated run-workspace initializer (`ccr_run_init.py`), a deterministic orchestration harness (`ccr_run.py`) with synchronous and detached execution modes, live observability artifacts (`status.json`, `trace.jsonl`, `run_summary.json`, `watch_cursor.json`, `reviewers.json`, `run_metrics.json`), a compact watcher (`ccr_watch.py`) with quiet/follow modes, a compact operator-facing run reporter (`ccr_report.py`), a deterministic pre-review synthesis stage (`ccr_review_prepare.py`) that builds scenario matrices/invariants before reviewer execution, normalized reviewer/verifier telemetry, a deterministic MR posting helper (`ccr_post_comments.py`) with structured publish metrics and restored structured reviewer comments (`Problem` / `Impact` / `Suggested fixes`), deterministic evidence-based middle-lane helpers (`ccr_consolidate.py`, `ccr_verify_prepare.py`), higher default reasoning settings for Codex and Gemini adapters, a shared `ccr_runtime/` helper layer extracted from the harness, and a repo-local eval substrate (`evals/ccr/`, `ccr_eval.py`, `scripts/evals.sh`) for offline regression checks plus from-run fixture scaffolding. Versioned contract schemas live under `quality/contracts/v1/`, stdlib unit tests under `tests/`, the observability playbook lives at [`docs/ccr-observability-playbook.md`](docs/ccr-observability-playbook.md), and the deterministic local smoke harness lives at `./scripts/smoke.sh`.
+Current release `v0.7.2` builds on the completed Phase 4 (non-CI) foundation from `v0.6.0`: CCR now has an isolated run-workspace initializer (`ccr_run_init.py`), a deterministic orchestration harness (`ccr_run.py`) with synchronous and detached execution modes, live observability artifacts (`status.json`, `trace.jsonl`, `run_summary.json`, `watch_cursor.json`, `reviewers.json`, `run_metrics.json`), a compact watcher (`ccr_watch.py`) with quiet/follow modes, a compact operator-facing run reporter (`ccr_report.py`), a deterministic pre-review synthesis stage (`ccr_review_prepare.py`) that builds scenario matrices/invariants before reviewer execution, normalized reviewer/verifier telemetry, a deterministic MR posting helper (`ccr_post_comments.py`) with structured publish metrics and restored structured reviewer comments (`Problem` / `Impact` / `Suggested fixes`), deterministic evidence-based middle-lane helpers (`ccr_consolidate.py`, `ccr_verify_prepare.py`), higher default reasoning settings for Codex and Gemini adapters, a shared `ccr_runtime/` helper layer extracted from the harness, a Claude adapter now pinned to Opus 4.7 by default, and a repo-local eval substrate (`evals/ccr/`, `ccr_eval.py`, `scripts/evals.sh`) for offline regression checks plus from-run fixture scaffolding. Versioned contract schemas live under `quality/contracts/v1/`, stdlib unit tests under `tests/`, the observability playbook lives at [`docs/ccr-observability-playbook.md`](docs/ccr-observability-playbook.md), and the deterministic local smoke harness lives at `./scripts/smoke.sh`.
 
 ## License
 

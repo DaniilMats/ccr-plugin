@@ -13,6 +13,7 @@ class TestCLIAdapters(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.codex_module = load_module("codex_adapter_module", "quality/scripts/llm-proxy/adapters/codex.py")
+        cls.claude_module = load_module("claude_adapter_module", "quality/scripts/llm-proxy/adapters/claude.py")
         cls.gemini_module = load_module("gemini_adapter_module", "quality/scripts/llm-proxy/adapters/gemini.py")
 
     def test_codex_adapter_uses_xhigh_reasoning_effort(self) -> None:
@@ -40,6 +41,40 @@ class TestCLIAdapters(unittest.TestCase):
         self.assertIn("model_reasoning_effort=xhigh", captured["cmd"])
         self.assertEqual(captured["env"]["CODEX_THREAD_ID"], "thread-123")
         self.assertTrue(any(str(part).endswith(".json") for part in captured["cmd"]))
+
+    def test_claude_adapter_uses_opus_4_7_with_max_effort(self) -> None:
+        adapter = self.claude_module.ClaudeAdapter()
+        captured: dict[str, object] = {}
+
+        def fake_run_subprocess(cmd, timeout, env=None, input_text=None):
+            captured["cmd"] = list(cmd)
+            captured["timeout"] = timeout
+            captured["env"] = dict(env or {})
+            captured["input_text"] = input_text
+            return json.dumps({
+                "result": "ok",
+                "session_id": "claude-session-789",
+                "usage": {"input_tokens": 3, "output_tokens": 4},
+            }), "", 0, False
+
+        with patch.dict(self.claude_module.os.environ, {}, clear=True):
+            with patch.object(adapter, "_run_subprocess", side_effect=fake_run_subprocess):
+                result = adapter.run(
+                    prompt="Review this diff",
+                    scope="file:internal/auth/jwt.go",
+                    thread_id="thread-789",
+                    timeout=77,
+                )
+
+        self.assertEqual(result.response, "ok")
+        self.assertEqual(result.thread_id, "claude-session-789")
+        self.assertEqual(result.tokens, 7)
+        self.assertEqual(captured["timeout"], 77)
+        self.assertEqual(captured["cmd"][0:4], ["claude", "--print", "--model", adapter.DEFAULT_MODEL])
+        self.assertEqual(captured["cmd"][captured["cmd"].index("--effort") + 1], adapter.DEFAULT_EFFORT)
+        self.assertEqual(adapter.DEFAULT_MODEL, "claude-opus-4-7")
+        self.assertNotIn("--betas", captured["cmd"])
+        self.assertTrue(str(captured["input_text"]).startswith("[Review scope: file internal/auth/jwt.go]"))
 
     def test_gemini_adapter_injects_high_thinking_alias_via_runtime_home(self) -> None:
         adapter = self.gemini_module.GeminiAdapter()
