@@ -129,6 +129,96 @@ class TestCCRConsolidate(unittest.TestCase):
         self.assertEqual(performance_candidate["available_pass_count"], 2)
         self.assertNotEqual(performance_candidate["candidate_id"], security_candidate["candidate_id"])
 
+    def test_build_candidates_merges_same_line_findings_with_low_jaccard_overlap(self) -> None:
+        reviewer_results = [
+            self._review_result(
+                "requirements_p1",
+                "requirements",
+                [
+                    {
+                        "severity": "bug",
+                        "file": "db/postgres/migrations/20260504130656_add_challenges_admin_tables.sql",
+                        "line": 38,
+                        "message": (
+                            "Empty UI config rows are allowed. Schema does not enforce the same "
+                            "minimum-shape rule. Both JSONB columns are nullable with no CHECK."
+                        ),
+                    }
+                ],
+            ),
+            self._review_result(
+                "logic_p2",
+                "logic",
+                [
+                    {
+                        "severity": "bug",
+                        "file": "db/postgres/migrations/20260504130656_add_challenges_admin_tables.sql",
+                        "line": 38,
+                        "message": (
+                            "Empty UI config rows are allowed. rest_config and widget_config are "
+                            "both nullable JSONB with no CHECK constraint."
+                        ),
+                    }
+                ],
+                provider="gemini",
+            ),
+        ]
+        route_plan = {"pass_counts": {"requirements": 2, "logic": 3}}
+        static_analysis = {"go_vet": [], "staticcheck": [], "gosec": []}
+
+        payload = self.module.build_candidates_manifest(
+            reviewer_results,
+            route_plan=route_plan,
+            static_analysis_payload=static_analysis,
+        )
+
+        self.assertEqual(payload["summary"]["candidate_count"], 1)
+        candidate = payload["candidates"][0]
+        self.assertEqual(candidate["support_count"], 2)
+        self.assertEqual(sorted(candidate["reviewers"]), ["logic_p2", "requirements_p1"])
+        self.assertEqual(candidate["line"], 38)
+        self.assertIn("logic", [candidate["persona"], *candidate["supporting_personas"]])
+        self.assertIn("requirements", [candidate["persona"], *candidate["supporting_personas"]])
+
+    def test_build_candidates_does_not_merge_unrelated_findings_on_same_line(self) -> None:
+        reviewer_results = [
+            self._review_result(
+                "security_p1",
+                "security",
+                [
+                    {
+                        "severity": "bug",
+                        "file": "internal/handler.go",
+                        "line": 50,
+                        "message": "Plain-text password is stored without hashing on user creation.",
+                    }
+                ],
+            ),
+            self._review_result(
+                "performance_p1",
+                "performance",
+                [
+                    {
+                        "severity": "warning",
+                        "file": "internal/handler.go",
+                        "line": 50,
+                        "message": "Database query allocates large slice on every request unnecessarily.",
+                    }
+                ],
+                provider="claude",
+            ),
+        ]
+        route_plan = {"pass_counts": {"security": 2, "performance": 2}}
+        static_analysis = {"go_vet": [], "staticcheck": [], "gosec": []}
+
+        payload = self.module.build_candidates_manifest(
+            reviewer_results,
+            route_plan=route_plan,
+            static_analysis_payload=static_analysis,
+        )
+
+        self.assertEqual(payload["summary"]["candidate_count"], 2)
+
     def test_build_candidates_skips_invalid_findings_and_keeps_stable_ids(self) -> None:
         reviewer_results = [
             self._review_result(
