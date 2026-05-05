@@ -317,12 +317,17 @@ def _cluster_matches(item: dict[str, Any], cluster: list[dict[str, Any]]) -> boo
     head_line = int(head["line"])
     item_line = int(item["line"])
     close_lines = abs(item_line - head_line) <= 3
+    same_line = item_line == head_line
     same_symbol = bool(item.get("symbol") and head.get("symbol") and item["symbol"] == head["symbol"])
+    item_tokens = set(item.get("category_tokens") or ())
+    head_tokens = set(head.get("category_tokens") or ())
+    shared_token_count = len(item_tokens & head_tokens)
     overlap = _jaccard_similarity(tuple(item.get("category_tokens") or ()), tuple(head.get("category_tokens") or ()))
     same_category = (
         str(item.get("normalized_category") or "") == str(head.get("normalized_category") or "")
         or overlap >= 0.6
         or (same_symbol and overlap >= 0.5)
+        or (same_line and (overlap >= 0.3 or shared_token_count >= 2))
     )
     if not same_category:
         return False
